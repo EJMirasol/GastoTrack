@@ -1,19 +1,61 @@
-import 'package:freezed_annotation/freezed_annotation.dart';
+class Category {
+  final String id;
+  final String name;
+  final String icon;
+  final String color;
+  final bool isDefault;
+  final String? userId;
 
-part 'category.freezed.dart';
-part 'category.g.dart';
+  const Category({
+    required this.id,
+    required this.name,
+    required this.icon,
+    required this.color,
+    this.isDefault = true,
+    this.userId,
+  });
 
-@freezed
-class Category with _$Category {
-  const factory Category({
-    required String id,
-    required String name,
-    required String icon,
-    required String color,
-    @Default(true) bool isDefault,
+  Category copyWith({
+    String? id,
+    String? name,
+    String? icon,
+    String? color,
+    bool? isDefault,
     String? userId,
-  }) = _Category;
+  }) {
+    return Category(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      color: color ?? this.color,
+      isDefault: isDefault ?? this.isDefault,
+      userId: userId ?? this.userId,
+    );
+  }
 
-  factory Category.fromJson(Map<String, dynamic> json) =>
-      _$CategoryFromJson(json);
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'icon': icon,
+    'color': color,
+    'isDefault': isDefault,
+    'userId': userId,
+  };
+
+  factory Category.fromJson(Map<String, dynamic> json) => Category(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    icon: json['icon'] as String,
+    color: json['color'] as String,
+    isDefault: json['isDefault'] as bool? ?? true,
+    userId: json['userId'] as String?,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Category && id == other.id && name == other.name;
+
+  @override
+  int get hashCode => Object.hash(id, name);
 }

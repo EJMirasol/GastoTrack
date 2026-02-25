@@ -8,7 +8,9 @@ import '../data/expense_repository.dart';
 import '../../../core/constants/constants.dart';
 
 class AddExpensePage extends ConsumerStatefulWidget {
-  const AddExpensePage({super.key});
+  final String? groupId;
+
+  const AddExpensePage({this.groupId, super.key});
 
   @override
   ConsumerState<AddExpensePage> createState() => _AddExpensePageState();
@@ -22,6 +24,13 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
   ExpenseType _type = ExpenseType.expense;
   String? _selectedCategoryId;
   DateTime _selectedDate = DateTime.now();
+  String? _groupId;
+
+  @override
+  void initState() {
+    super.initState();
+    _groupId = widget.groupId;
+  }
 
   @override
   void dispose() {
@@ -37,7 +46,11 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _type == ExpenseType.expense ? 'Add Expense' : 'Add Income',
+          _groupId != null
+              ? 'Add Group Expense'
+              : _type == ExpenseType.expense
+              ? 'Add Expense'
+              : 'Add Income',
         ),
         leading: IconButton(
           icon: const Icon(Icons.close),
@@ -128,7 +141,7 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
         : categories.where((c) => c.name != 'Salary').toList();
 
     return DropdownButtonFormField<String>(
-      value: _selectedCategoryId,
+      initialValue: _selectedCategoryId,
       decoration: const InputDecoration(labelText: 'Category'),
       items: filteredCategories.map<DropdownMenuItem<String>>((category) {
         return DropdownMenuItem<String>(
@@ -214,6 +227,7 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
             amount: amount,
             categoryId: _selectedCategoryId!,
             userId: 'demo-user',
+            groupId: _groupId,
             description: _descriptionController.text.isNotEmpty
                 ? _descriptionController.text
                 : null,

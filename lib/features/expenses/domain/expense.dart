@@ -1,26 +1,96 @@
-import 'package:freezed_annotation/freezed_annotation.dart';
-
-part 'expense.freezed.dart';
-part 'expense.g.dart';
-
 enum ExpenseType { expense, income }
 
-@freezed
-class Expense with _$Expense {
-  const factory Expense({
-    required String id,
-    required double amount,
-    required String categoryId,
-    required String userId,
+class Expense {
+  final String id;
+  final double amount;
+  final String categoryId;
+  final String userId;
+  final String? groupId;
+  final String? description;
+  final DateTime date;
+  final ExpenseType type;
+  final bool isRecurring;
+  final String? recurringRuleId;
+  final DateTime createdAt;
+
+  const Expense({
+    required this.id,
+    required this.amount,
+    required this.categoryId,
+    required this.userId,
+    this.groupId,
+    this.description,
+    required this.date,
+    this.type = ExpenseType.expense,
+    this.isRecurring = false,
+    this.recurringRuleId,
+    required this.createdAt,
+  });
+
+  Expense copyWith({
+    String? id,
+    double? amount,
+    String? categoryId,
+    String? userId,
     String? groupId,
     String? description,
-    required DateTime date,
-    @Default(ExpenseType.expense) ExpenseType type,
-    @Default(false) bool isRecurring,
+    DateTime? date,
+    ExpenseType? type,
+    bool? isRecurring,
     String? recurringRuleId,
-    required DateTime createdAt,
-  }) = _Expense;
+    DateTime? createdAt,
+  }) {
+    return Expense(
+      id: id ?? this.id,
+      amount: amount ?? this.amount,
+      categoryId: categoryId ?? this.categoryId,
+      userId: userId ?? this.userId,
+      groupId: groupId ?? this.groupId,
+      description: description ?? this.description,
+      date: date ?? this.date,
+      type: type ?? this.type,
+      isRecurring: isRecurring ?? this.isRecurring,
+      recurringRuleId: recurringRuleId ?? this.recurringRuleId,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 
-  factory Expense.fromJson(Map<String, dynamic> json) =>
-      _$ExpenseFromJson(json);
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'amount': amount,
+    'categoryId': categoryId,
+    'userId': userId,
+    'groupId': groupId,
+    'description': description,
+    'date': date.millisecondsSinceEpoch,
+    'type': type.name,
+    'isRecurring': isRecurring,
+    'recurringRuleId': recurringRuleId,
+    'createdAt': createdAt.millisecondsSinceEpoch,
+  };
+
+  factory Expense.fromJson(Map<String, dynamic> json) => Expense(
+    id: json['id'] as String,
+    amount: (json['amount'] as num).toDouble(),
+    categoryId: json['categoryId'] as String,
+    userId: json['userId'] as String,
+    groupId: json['groupId'] as String?,
+    description: json['description'] as String?,
+    date: DateTime.fromMillisecondsSinceEpoch(json['date'] as int),
+    type: json['type'] == 'income' ? ExpenseType.income : ExpenseType.expense,
+    isRecurring: json['isRecurring'] as bool? ?? false,
+    recurringRuleId: json['recurringRuleId'] as String?,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Expense &&
+          id == other.id &&
+          amount == other.amount &&
+          date == other.date;
+
+  @override
+  int get hashCode => Object.hash(id, amount, date);
 }

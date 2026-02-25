@@ -3,15 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/analytics/presentation/analytics_page.dart';
+import '../../features/auth/presentation/auth_page.dart';
 import '../../features/expenses/presentation/add_expense_page.dart';
 import '../../features/expenses/presentation/home_page.dart';
 import '../../features/groups/presentation/groups_page.dart';
+import '../../features/groups/presentation/group_detail_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/auth/data/auth_repository.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final isAuthenticated = ref.watch(isAuthenticatedProvider);
+
   return GoRouter(
     initialLocation: '/',
+    redirect: (context, state) {
+      final isAuthRoute = state.matchedLocation == '/auth';
+
+      if (!isAuthenticated && !isAuthRoute) {
+        return '/auth';
+      }
+
+      if (isAuthenticated && isAuthRoute) {
+        return '/';
+      }
+
+      return null;
+    },
     routes: [
+      GoRoute(path: '/auth', builder: (context, state) => const AuthPage()),
       ShellRoute(
         builder: (context, state, child) => ScaffoldWithNavBar(child: child),
         routes: [
@@ -21,7 +40,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: 'add',
-                builder: (context, state) => const AddExpensePage(),
+                builder: (context, state) => AddExpensePage(
+                  groupId: state.uri.queryParameters['groupId'],
+                ),
               ),
             ],
           ),
@@ -32,6 +53,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/groups',
             builder: (context, state) => const GroupsPage(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) =>
+                    GroupDetailPage(groupId: state.pathParameters['id'] ?? ''),
+              ),
+            ],
           ),
           GoRoute(
             path: '/settings',
