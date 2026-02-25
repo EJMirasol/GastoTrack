@@ -1,0 +1,15 @@
+{
+  "name": "gastotrack-convex",
+  "version": "1.0.0",
+  "description": "GastoTrack Convex Backend",
+  "scripts": {
+    "dev": "convex dev",
+    "deploy": "convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
