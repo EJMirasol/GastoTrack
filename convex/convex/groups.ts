@@ -1,16 +1,23 @@
-import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { mutation, query } from './_generated/server';
+import { v } from 'convex/values';
+import { authComponent } from './auth';
+
+async function requireAuth(ctx: any): Promise<string> {
+  const user = await authComponent.getAuthUser(ctx);
+  if (!user) throw new Error('Not authenticated');
+  return (user as any).id as string;
+}
 
 export const getByUser = query({
-  args: { userId: v.id("users") },
+  args: { userId: v.string() },
   handler: async (ctx, args) => {
     const memberships = await ctx.db
-      .query("groupMembers")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .query('groupMembers')
+      .withIndex('by_user', (q) => q.eq('userId', args.userId))
       .collect();
 
     const groups = await Promise.all(
-      memberships.map((m) => ctx.db.get(m.groupId))
+      memberships.map((m) => ctx.db.get(m.groupId)),
     );
 
     return groups.filter((g) => g !== null);
@@ -18,7 +25,7 @@ export const getByUser = query({
 });
 
 export const getById = query({
-  args: { id: v.id("groups") },
+  args: { id: v.id('groups') },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.id);
   },
@@ -28,15 +35,15 @@ export const getByInviteCode = query({
   args: { inviteCode: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query("groups")
-      .withIndex("by_invite_code", (q) => q.eq("inviteCode", args.inviteCode))
+      .query('groups')
+      .withIndex('by_invite_code', (q) => q.eq('inviteCode', args.inviteCode))
       .first();
   },
 });
 
 function generateInviteCode(): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let code = "";
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
   for (let i = 0; i < 6; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
@@ -46,22 +53,22 @@ function generateInviteCode(): string {
 export const create = mutation({
   args: {
     name: v.string(),
-    createdBy: v.id("users"),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
     const inviteCode = generateInviteCode();
-    
-    const groupId = await ctx.db.insert("groups", {
+
+    const groupId = await ctx.db.insert('groups', {
       name: args.name,
-      createdBy: args.createdBy,
-      members: [args.createdBy],
+      createdBy: userId,
+      members: [userId],
       inviteCode,
       createdAt: Date.now(),
     });
 
-    await ctx.db.insert("groupMembers", {
+    await ctx.db.insert('groupMembers', {
       groupId,
-      userId: args.createdBy,
+      userId,
       joinedAt: Date.now(),
     });
 
@@ -71,24 +78,24 @@ export const create = mutation({
 
 export const join = mutation({
   args: {
-    groupId: v.id("groups"),
-    userId: v.id("users"),
+    groupId: v.id('groups'),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
     const group = await ctx.db.get(args.groupId);
-    if (!group) throw new Error("Group not found");
+    if (!group) throw new Error('Group not found');
 
-    if (group.members.includes(args.userId)) {
+    if (group.members.includes(userId)) {
       return;
     }
 
     await ctx.db.patch(args.groupId, {
-      members: [...group.members, args.userId],
+      members: [...group.members, userId],
     });
 
-    await ctx.db.insert("groupMembers", {
+    await ctx.db.insert('groupMembers', {
       groupId: args.groupId,
-      userId: args.userId,
+      userId,
       joinedAt: Date.now(),
     });
   },
@@ -96,21 +103,21 @@ export const join = mutation({
 
 export const leave = mutation({
   args: {
-    groupId: v.id("groups"),
-    userId: v.id("users"),
+    groupId: v.id('groups'),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuth(ctx);
     const group = await ctx.db.get(args.groupId);
-    if (!group) throw new Error("Group not found");
+    if (!group) throw new Error('Group not found');
 
     await ctx.db.patch(args.groupId, {
-      members: group.members.filter((id) => id !== args.userId),
+      members: group.members.filter((id) => id !== userId),
     });
 
     const membership = await ctx.db
-      .query("groupMembers")
-      .withIndex("by_group", (q) => q.eq("groupId", args.groupId))
-      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .query('groupMembers')
+      .withIndex('by_group', (q) => q.eq('groupId', args.groupId))
+      .filter((q) => q.eq(q.field('userId'), userId))
       .first();
 
     if (membership) {

@@ -4,6 +4,7 @@ import '../../features/expenses/domain/expense.dart';
 import '../../features/expenses/domain/category.dart';
 import '../../features/expenses/data/expense_repository.dart';
 import '../../core/constants/constants.dart';
+import '../../core/services/currency_service.dart';
 
 class ExpenseListItem extends ConsumerWidget {
   const ExpenseListItem({
@@ -32,6 +33,7 @@ class ExpenseListItem extends ConsumerWidget {
 
     final isExpense = expense.type == ExpenseType.expense;
     final color = isExpense ? AppColors.expense : AppColors.income;
+    final currency = ref.watch(currencyProvider);
 
     return ListTile(
       onTap: onTap,
@@ -58,7 +60,7 @@ class ExpenseListItem extends ConsumerWidget {
             )
           : null,
       trailing: Text(
-        '${isExpense ? "-" : "+"}\$${expense.amount.toStringAsFixed(2)}',
+        '${isExpense ? "-" : "+"}${formatCurrency(expense.amount, currency)}',
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
           color: color,
           fontWeight: FontWeight.w600,

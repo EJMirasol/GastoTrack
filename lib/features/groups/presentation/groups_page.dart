@@ -2,64 +2,172 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/constants.dart';
+import '../../../core/services/local_cache_service.dart';
+import '../../../core/services/convex_service.dart';
 import '../domain/group.dart';
 import '../../auth/data/auth_repository.dart';
 
 class GroupNotifier extends StateNotifier<List<Group>> {
-  GroupNotifier() : super([]);
+  final LocalCacheService _cache;
+  final ConvexService _convex;
 
-  String generateInviteCode() {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    final code = StringBuffer();
-    for (int i = 0; i < 6; i++) {
-      code.write(chars[DateTime.now().millisecondsSinceEpoch % chars.length]);
+  GroupNotifier(this._cache, this._convex) : super([]);
+
+  Future<void> loadForUser(String userId) async {
+    final cachedGroups = _cache.getGroupsForUser(userId);
+    if (cachedGroups.isNotEmpty) {
+      state = cachedGroups.map((g) => Group.fromJson(g)).toList();
     }
-    return code.toString();
+
+    try {
+      final result = await _convex.query('groups:getByUser', {
+        'userId': userId,
+      });
+      final remoteGroups = result['value'] as List<dynamic>? ?? [];
+
+      final groups = remoteGroups.map((g) {
+        final map = g as Map<String, dynamic>;
+        return Group(
+          id: map['_id'] as String,
+          name: map['name'] as String,
+          createdBy: map['createdBy'] as String,
+          members: List<String>.from(map['members'] as List),
+          inviteCode: map['inviteCode'] as String,
+          createdAt: DateTime.fromMillisecondsSinceEpoch(
+            map['createdAt'] as int,
+          ),
+        );
+      }).toList();
+
+      for (final group in groups) {
+        await _cache.saveGroup({
+          ...group.toJson(),
+          'convexId': group.id,
+          'syncStatus': 'synced',
+        });
+      }
+      state = groups;
+    } catch (_) {}
   }
 
-  void createGroup(String name, String userId) {
+  Future<void> createGroup(String name, String userId) async {
+    final localId = DateTime.now().millisecondsSinceEpoch.toString();
     final group = Group(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: localId,
       name: name,
       createdBy: userId,
       members: [userId],
-      inviteCode: generateInviteCode(),
+      inviteCode: '',
       createdAt: DateTime.now(),
     );
+    await _cache.saveGroup(group.toJson());
     state = [...state, group];
-  }
 
-  void joinGroup(Group group, String userId) {
-    if (group.members.contains(userId)) return;
-
-    final updatedGroup = Group(
-      id: group.id,
-      name: group.name,
-      createdBy: group.createdBy,
-      members: [...group.members, userId],
-      inviteCode: group.inviteCode,
-      createdAt: group.createdAt,
-    );
-
-    state = state.map((g) => g.id == group.id ? updatedGroup : g).toList();
-  }
-
-  void leaveGroup(String groupId, String userId) {
-    state = state.where((g) {
-      if (g.id == groupId) {
-        final updatedMembers = g.members.where((m) => m != userId).toList();
-        if (updatedMembers.isEmpty) {
-          return false;
-        }
-        return true;
+    try {
+      final result = await _convex.mutation('groups:create', {'name': name});
+      final convexId = result['value'] as String?;
+      if (convexId != null) {
+        await _cache.saveGroup({
+          ...group.toJson(),
+          'id': convexId,
+          'convexId': convexId,
+          'syncStatus': 'synced',
+        });
+        final updatedGroup = Group(
+          id: convexId,
+          name: name,
+          createdBy: userId,
+          members: [userId],
+          inviteCode: group.inviteCode,
+          createdAt: group.createdAt,
+        );
+        state = state.map((g) => g.id == localId ? updatedGroup : g).toList();
       }
+    } catch (_) {
+      await _cache.addToSyncQueue({
+        'id': localId,
+        'type': 'create',
+        'collection': 'groups',
+        'recordId': localId,
+        'payload': {'name': name},
+      });
+    }
+  }
+
+  Future<Group?> findByInviteCode(String code) async {
+    try {
+      final result = await _convex.query('groups:getByInviteCode', {
+        'inviteCode': code,
+      });
+      final data = result['value'];
+      if (data == null) return null;
+      final map = data as Map<String, dynamic>;
+      return Group(
+        id: map['_id'] as String,
+        name: map['name'] as String,
+        createdBy: map['createdBy'] as String,
+        members: List<String>.from(map['members'] as List),
+        inviteCode: map['inviteCode'] as String,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt'] as int),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> joinGroup(String inviteCode, String userId) async {
+    try {
+      final group = await findByInviteCode(inviteCode);
+      if (group == null) return false;
+
+      await _convex.mutation('groups:join', {'groupId': group.id});
+      await loadForUser(userId);
       return true;
-    }).toList();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> leaveGroup(String groupId, String userId) async {
+    final group = state.where((g) => g.id == groupId).firstOrNull;
+    if (group == null) return;
+
+    final updatedMembers = group.members.where((m) => m != userId).toList();
+
+    if (updatedMembers.isEmpty) {
+      await _cache.deleteGroup(groupId);
+      state = state.where((g) => g.id != groupId).toList();
+    } else {
+      final updatedGroup = Group(
+        id: group.id,
+        name: group.name,
+        createdBy: group.createdBy,
+        members: updatedMembers,
+        inviteCode: group.inviteCode,
+        createdAt: group.createdAt,
+      );
+      await _cache.saveGroup(updatedGroup.toJson());
+      state = state.map((g) => g.id == groupId ? updatedGroup : g).toList();
+    }
+
+    try {
+      await _convex.mutation('groups:leave', {'groupId': groupId});
+    } catch (_) {
+      await _cache.addToSyncQueue({
+        'id': '${groupId}_leave',
+        'type': 'delete',
+        'collection': 'groups',
+        'recordId': groupId,
+        'payload': {'userId': userId},
+      });
+    }
   }
 }
 
 final groupsProvider = StateNotifierProvider<GroupNotifier, List<Group>>((ref) {
-  return GroupNotifier();
+  final cache = ref.watch(localCacheServiceProvider);
+  final convex = ref.watch(convexServiceProvider);
+  return GroupNotifier(cache, convex);
 });
 
 class GroupsPage extends ConsumerStatefulWidget {
@@ -128,15 +236,15 @@ class _GroupsPageState extends ConsumerState<GroupsPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               if (controller.text.isNotEmpty) {
                 final currentUser = ref.read(currentUserProvider);
                 if (currentUser != null) {
-                  ref
+                  await ref
                       .read(groupsProvider.notifier)
                       .createGroup(controller.text, currentUser.id);
                 }
-                Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
               }
             },
             child: const Text('Create'),
@@ -173,12 +281,25 @@ class _GroupsPageState extends ConsumerState<GroupsPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               if (controller.text.length == 6) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Group not found')),
-                );
-                Navigator.pop(context);
+                final currentUser = ref.read(currentUserProvider);
+                if (currentUser == null) return;
+
+                final success = await ref
+                    .read(groupsProvider.notifier)
+                    .joinGroup(controller.text.toUpperCase(), currentUser.id);
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success ? 'Joined group!' : 'Group not found',
+                      ),
+                    ),
+                  );
+                }
               }
             },
             child: const Text('Join'),

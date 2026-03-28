@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constants/constants.dart';
+import '../../../core/services/currency_service.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../expenses/data/expense_repository.dart';
 import '../../expenses/domain/expense.dart';
@@ -96,7 +98,10 @@ class _GroupDetailPageState extends ConsumerState<GroupDetailPage> {
               const _EmptyExpensesState()
             else
               ...groupExpenses.map(
-                (expense) => _GroupExpenseTile(expense: expense),
+                (expense) => _GroupExpenseTile(
+                  expense: expense,
+                  currency: ref.watch(currencyProvider),
+                ),
               ),
             if (settlements.isNotEmpty) ...[
               const Divider(),
@@ -114,6 +119,7 @@ class _GroupDetailPageState extends ConsumerState<GroupDetailPage> {
                   settlement: s,
                   group: group,
                   currentUserId: currentUser?.id ?? '',
+                  currency: ref.watch(currencyProvider),
                 ),
               ),
             ],
@@ -229,6 +235,7 @@ class _GroupDetailPageState extends ConsumerState<GroupDetailPage> {
                   IconButton(
                     icon: const Icon(Icons.copy),
                     onPressed: () {
+                      Clipboard.setData(ClipboardData(text: group.inviteCode));
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text('Code copied to clipboard'),
@@ -330,9 +337,10 @@ class _EmptyExpensesState extends StatelessWidget {
 }
 
 class _GroupExpenseTile extends StatelessWidget {
-  const _GroupExpenseTile({required this.expense});
+  const _GroupExpenseTile({required this.expense, required this.currency});
 
   final Expense expense;
+  final Currency currency;
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +357,7 @@ class _GroupExpenseTile extends StatelessWidget {
       title: Text(expense.description ?? 'Expense'),
       subtitle: Text(DateFormat('MMM d, y').format(expense.date)),
       trailing: Text(
-        '\$${expense.amount.toStringAsFixed(2)}',
+        formatCurrency(expense.amount, currency),
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
           color: AppColors.expense,
           fontWeight: FontWeight.w600,
@@ -364,11 +372,13 @@ class _SettlementTile extends StatelessWidget {
     required this.settlement,
     required this.group,
     required this.currentUserId,
+    required this.currency,
   });
 
   final Settlement settlement;
   final Group group;
   final String currentUserId;
+  final Currency currency;
 
   @override
   Widget build(BuildContext context) {
@@ -404,7 +414,7 @@ class _SettlementTile extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyMedium,
         ),
         trailing: Text(
-          '\$${settlement.amount.toStringAsFixed(2)}',
+          formatCurrency(settlement.amount, currency),
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: isOwed ? AppColors.income : AppColors.expense,
             fontWeight: FontWeight.w600,

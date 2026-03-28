@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../shared/widgets/widgets.dart';
 import '../data/expense_repository.dart';
+import '../data/budget_service.dart';
 import '../../../core/constants/constants.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../groups/presentation/groups_page.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({super.key});
@@ -13,6 +16,15 @@ class HomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final expenses = ref.watch(monthlyExpensesProvider);
     final selectedMonth = ref.watch(selectedMonthProvider);
+
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (next.user != null) {
+        final userId = next.user!.id;
+        ref.read(expensesProvider.notifier).loadForUser(userId);
+        ref.read(groupsProvider.notifier).loadForUser(userId);
+        ref.read(budgetsProvider.notifier).loadForUser(userId);
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -30,7 +42,14 @@ class HomePage extends ConsumerWidget {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          await Future.delayed(const Duration(milliseconds: 500));
+          final user = ref.read(currentUserProvider);
+          if (user != null) {
+            await Future.wait([
+              ref.read(expensesProvider.notifier).loadForUser(user.id),
+              ref.read(groupsProvider.notifier).loadForUser(user.id),
+              ref.read(budgetsProvider.notifier).loadForUser(user.id),
+            ]);
+          }
         },
         child: CustomScrollView(
           slivers: [
@@ -120,9 +139,11 @@ class HomePage extends ConsumerWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(expensesProvider.notifier).removeExpense(expenseId);
-              Navigator.pop(context);
+            onPressed: () async {
+              await ref
+                  .read(expensesProvider.notifier)
+                  .removeExpense(expenseId);
+              if (context.mounted) Navigator.pop(context);
             },
             child: Text(
               'Delete',

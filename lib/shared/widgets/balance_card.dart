@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/expenses/data/expense_repository.dart';
 import '../../core/constants/constants.dart';
+import '../../core/services/currency_service.dart';
 
 class BalanceCard extends ConsumerWidget {
   const BalanceCard({super.key});
@@ -10,6 +11,7 @@ class BalanceCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final totalExpenses = ref.watch(totalExpensesForMonthProvider);
     final totalIncome = ref.watch(totalIncomeForMonthProvider);
+    final currency = ref.watch(currencyProvider);
     final balance = totalIncome - totalExpenses;
 
     return Card(
@@ -27,7 +29,7 @@ class BalanceCard extends ConsumerWidget {
             ),
             const SizedBox(height: AppSizes.xs),
             Text(
-              '\$${balance.abs().toStringAsFixed(2)}',
+              formatCurrency(balance.abs(), currency),
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: balance >= 0 ? AppColors.success : AppColors.error,
@@ -43,6 +45,7 @@ class BalanceCard extends ConsumerWidget {
                     amount: totalIncome,
                     color: AppColors.income,
                     icon: Icons.arrow_downward,
+                    currency: currency,
                   ),
                 ),
                 const SizedBox(width: AppSizes.md),
@@ -53,6 +56,7 @@ class BalanceCard extends ConsumerWidget {
                     amount: totalExpenses,
                     color: AppColors.expense,
                     icon: Icons.arrow_upward,
+                    currency: currency,
                   ),
                 ),
               ],
@@ -69,6 +73,7 @@ class BalanceCard extends ConsumerWidget {
     required double amount,
     required Color color,
     required IconData icon,
+    required Currency currency,
   }) {
     return Container(
       padding: const EdgeInsets.all(AppSizes.md),
@@ -98,7 +103,7 @@ class BalanceCard extends ConsumerWidget {
                   ),
                 ),
                 Text(
-                  '\$${amount.toStringAsFixed(2)}',
+                  formatCurrency(amount, currency),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),

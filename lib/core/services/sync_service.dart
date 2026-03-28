@@ -3,6 +3,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'local_cache_service.dart';
 import 'convex_service.dart';
+import '../../features/auth/data/auth_repository.dart';
 
 enum SyncStatus { idle, syncing, offline, error }
 
@@ -12,7 +13,7 @@ class SyncState {
   final String? error;
   final int pendingCount;
 
-  SyncState({
+  const SyncState({
     required this.status,
     this.lastSyncedAt,
     this.error,
@@ -34,15 +35,21 @@ class SyncState {
   }
 }
 
-class SyncService {
+final syncStateProvider = StateNotifierProvider<SyncNotifier, SyncState>((ref) {
+  final cache = ref.watch(localCacheServiceProvider);
+  final convex = ref.watch(convexServiceProvider);
+  return SyncNotifier(cache, convex);
+});
+
+class SyncNotifier extends StateNotifier<SyncState> {
   final LocalCacheService _cache;
   final ConvexService _convex;
-  final StateController<SyncState> _stateController;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   Timer? _periodicSyncTimer;
 
-  SyncService(this._cache, this._convex, this._stateController) {
+  SyncNotifier(this._cache, this._convex)
+    : super(const SyncState(status: SyncStatus.idle)) {
     _initialize();
   }
 
@@ -55,37 +62,28 @@ class SyncService {
       const Duration(minutes: 5),
       (_) => syncNow(),
     );
-
-    // Initial sync attempt
-    syncNow();
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
     final isOffline = results.contains(ConnectivityResult.none);
 
     if (isOffline) {
-      _stateController.state = _stateController.state.copyWith(
-        status: SyncStatus.offline,
-      );
-    } else if (_stateController.state.status == SyncStatus.offline) {
+      state = state.copyWith(status: SyncStatus.offline);
+    } else if (state.status == SyncStatus.offline) {
       syncNow();
     }
   }
 
   Future<void> syncNow() async {
-    if (_stateController.state.status == SyncStatus.syncing) return;
+    if (state.status == SyncStatus.syncing) return;
 
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity.contains(ConnectivityResult.none)) {
-      _stateController.state = _stateController.state.copyWith(
-        status: SyncStatus.offline,
-      );
+      state = state.copyWith(status: SyncStatus.offline);
       return;
     }
 
-    _stateController.state = _stateController.state.copyWith(
-      status: SyncStatus.syncing,
-    );
+    state = state.copyWith(status: SyncStatus.syncing);
 
     try {
       await _pullRemoteChanges();
@@ -93,69 +91,101 @@ class SyncService {
       await _cache.cleanupExpiredData();
 
       final pendingCount = _cache.getPendingMutations().length;
-      _stateController.state = SyncState(
+      state = SyncState(
         status: SyncStatus.idle,
         lastSyncedAt: DateTime.now(),
         pendingCount: pendingCount,
       );
     } catch (e) {
-      _stateController.state = _stateController.state.copyWith(
-        status: SyncStatus.error,
-        error: e.toString(),
-      );
+      state = state.copyWith(status: SyncStatus.error, error: e.toString());
     }
   }
 
   Future<void> _pullRemoteChanges() async {
-    final lastSync = _cache.getSetting<String>('lastSync');
-    final lastSyncTime = lastSync != null
-        ? DateTime.tryParse(lastSync)?.millisecondsSinceEpoch ?? 0
-        : 0;
+    final userId = _cache.getSetting<String>('current_user_id');
+    if (userId == null) return;
 
+    await _pullExpenses(userId);
+    await _pullGroups(userId);
+    await _pullBudgets(userId);
+
+    await _cache.saveSetting('lastSync', DateTime.now().toIso8601String());
+  }
+
+  Future<void> _pullExpenses(String userId) async {
     try {
-      final remoteExpenses = await _convex.query('expenses:getUpdatedSince', {
-        'since': lastSyncTime,
+      final result = await _convex.query('expenses:getByUser', {
+        'userId': userId,
       });
+      final remoteExpenses = result['value'] as List<dynamic>? ?? [];
 
-      if (remoteExpenses != null && remoteExpenses is List) {
-        for (final remoteExpense in remoteExpenses) {
-          final id = remoteExpense['_id'] as String;
-          final localExpense = _cache.getExpense(id);
-
-          if (localExpense == null) {
-            await _cache.saveExpense({
-              'id': id,
-              ...Map<String, dynamic>.from(remoteExpense),
-              'convexId': id,
-              'syncStatus': 'synced',
-            });
-          } else {
-            final remoteUpdatedAt = DateTime.fromMillisecondsSinceEpoch(
-              remoteExpense['updatedAt'] as int? ??
-                  remoteExpense['createdAt'] as int,
-            );
-            final localUpdatedAtStr = localExpense['updatedAt'] as String?;
-            final localUpdatedAt = localUpdatedAtStr != null
-                ? DateTime.tryParse(localUpdatedAtStr)
-                : null;
-
-            if (localUpdatedAt == null ||
-                remoteUpdatedAt.isAfter(localUpdatedAt)) {
-              await _cache.saveExpense({
-                'id': id,
-                ...Map<String, dynamic>.from(remoteExpense),
-                'convexId': id,
-                'syncStatus': 'synced',
-              });
-            }
-          }
-        }
+      for (final remote in remoteExpenses) {
+        final map = remote as Map<String, dynamic>;
+        final id = map['_id'] as String;
+        await _cache.saveExpense({
+          'id': id,
+          'convexId': id,
+          'syncStatus': 'synced',
+          'amount': map['amount'],
+          'categoryId': map['categoryId'] as String,
+          'userId': map['userId'] as String,
+          'groupId': map['groupId'] as String?,
+          'description': map['description'] as String?,
+          'date': map['date'],
+          'type': map['type'] as String,
+          'isRecurring': map['isRecurring'] as bool? ?? false,
+          'createdAt': map['createdAt'],
+        });
       }
+    } catch (_) {}
+  }
 
-      await _cache.saveSetting('lastSync', DateTime.now().toIso8601String());
-    } catch (e) {
-      rethrow;
-    }
+  Future<void> _pullGroups(String userId) async {
+    try {
+      final result = await _convex.query('groups:getByUser', {
+        'userId': userId,
+      });
+      final remoteGroups = result['value'] as List<dynamic>? ?? [];
+
+      for (final remote in remoteGroups) {
+        final map = remote as Map<String, dynamic>;
+        final id = map['_id'] as String;
+        await _cache.saveGroup({
+          'id': id,
+          'convexId': id,
+          'syncStatus': 'synced',
+          'name': map['name'] as String,
+          'createdBy': map['createdBy'] as String,
+          'members': List<String>.from(map['members'] as List),
+          'inviteCode': map['inviteCode'] as String,
+          'createdAt': map['createdAt'],
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _pullBudgets(String userId) async {
+    try {
+      final result = await _convex.query('budgets:getByUser', {
+        'userId': userId,
+      });
+      final remoteBudgets = result['value'] as List<dynamic>? ?? [];
+
+      for (final remote in remoteBudgets) {
+        final map = remote as Map<String, dynamic>;
+        final id = map['_id'] as String;
+        await _cache.saveBudget({
+          'id': id,
+          'convexId': id,
+          'syncStatus': 'synced',
+          'userId': map['userId'] as String,
+          'categoryId': map['categoryId'] as String?,
+          'amount': map['amount'],
+          'period': map['period'] as String,
+          'createdAt': map['createdAt'],
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _pushLocalChanges() async {
@@ -165,53 +195,44 @@ class SyncService {
       final type = mutation['type'] as String;
       final collection = mutation['collection'] as String;
       final recordId = mutation['recordId'] as String;
-      final payload = mutation['payload'] as Map<String, dynamic>;
+      final payload = Map<String, dynamic>.from(
+        mutation['payload'] as Map? ?? {},
+      );
       final retryCount = mutation['retryCount'] as int? ?? 0;
 
       try {
         switch (type) {
           case 'create':
-            final convexId = await _convex.mutation(
+            final result = await _convex.mutation(
               '$collection:create',
-              Map<String, dynamic>.from(payload),
+              payload,
             );
-
+            final convexId = result['value'] as String?;
             if (convexId != null) {
-              final localExpense = _cache.getExpense(recordId);
-              if (localExpense != null) {
-                await _cache.saveExpense({
-                  ...localExpense,
-                  'convexId': convexId,
-                  'syncStatus': 'synced',
-                });
-              }
-              await _cache.removePendingMutation(mutation['id'] as String);
+              _updateConvexId(collection, recordId, convexId);
             }
+            await _cache.removePendingMutation(mutation['id'] as String);
             break;
 
           case 'update':
-            final localExpense = _cache.getExpense(recordId);
-            final convexId = localExpense?['convexId'];
-
+            final convexId = _getConvexId(collection, recordId);
             if (convexId != null) {
               await _convex.mutation('$collection:update', {
                 'id': convexId,
-                ...Map<String, dynamic>.from(payload),
+                ...payload,
               });
               await _cache.removePendingMutation(mutation['id'] as String);
             }
             break;
 
           case 'delete':
-            final localExpense = _cache.getExpense(recordId);
-            final deleteConvexId = localExpense?['convexId'];
-
+            final deleteConvexId = _getConvexId(collection, recordId);
             if (deleteConvexId != null) {
               await _convex.mutation('$collection:remove', {
                 'id': deleteConvexId,
               });
             }
-            await _cache.deleteExpense(recordId);
+            _deleteLocalRecord(collection, recordId);
             await _cache.removePendingMutation(mutation['id'] as String);
             break;
         }
@@ -231,12 +252,76 @@ class SyncService {
     }
   }
 
+  String? _getConvexId(String collection, String recordId) {
+    switch (collection) {
+      case 'expenses':
+        return _cache.getExpense(recordId)?['convexId'] as String?;
+      case 'groups':
+        return _cache.getGroup(recordId)?['convexId'] as String?;
+      case 'budgets':
+        return _cache.getBudget(recordId)?['convexId'] as String?;
+      default:
+        return null;
+    }
+  }
+
+  void _updateConvexId(String collection, String recordId, String convexId) {
+    switch (collection) {
+      case 'expenses':
+        final local = _cache.getExpense(recordId);
+        if (local != null) {
+          _cache.saveExpense({
+            ...local,
+            'convexId': convexId,
+            'syncStatus': 'synced',
+          });
+        }
+        break;
+      case 'groups':
+        final local = _cache.getGroup(recordId);
+        if (local != null) {
+          _cache.saveGroup({
+            ...local,
+            'convexId': convexId,
+            'syncStatus': 'synced',
+          });
+        }
+        break;
+      case 'budgets':
+        final local = _cache.getBudget(recordId);
+        if (local != null) {
+          _cache.saveBudget({
+            ...local,
+            'convexId': convexId,
+            'syncStatus': 'synced',
+          });
+        }
+        break;
+    }
+  }
+
+  void _deleteLocalRecord(String collection, String recordId) {
+    switch (collection) {
+      case 'expenses':
+        _cache.deleteExpense(recordId);
+        break;
+      case 'groups':
+        _cache.deleteGroup(recordId);
+        break;
+      case 'budgets':
+        _cache.deleteBudget(recordId);
+        break;
+    }
+  }
+
   int getPendingCount() {
     return _cache.getPendingMutations().length;
   }
 
+  @override
   void dispose() {
     _connectivitySubscription?.cancel();
     _periodicSyncTimer?.cancel();
+    super.dispose();
   }
 }

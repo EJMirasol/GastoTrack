@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../expenses/data/expense_repository.dart';
 import '../../expenses/domain/category.dart';
 import '../../../core/constants/constants.dart';
+import '../../../core/services/currency_service.dart';
 
 class AnalyticsPage extends ConsumerWidget {
   const AnalyticsPage({super.key});
@@ -28,6 +29,7 @@ class AnalyticsPage extends ConsumerWidget {
                   totalExpenses: totalExpenses,
                   totalIncome: ref.watch(totalIncomeForMonthProvider),
                   month: selectedMonth,
+                  currency: ref.watch(currencyProvider),
                 ),
                 const SizedBox(height: AppSizes.lg),
                 Text(
@@ -50,7 +52,11 @@ class AnalyticsPage extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: AppSizes.md),
-                _BarChartCard(expenses: expenses, selectedMonth: selectedMonth),
+                _BarChartCard(
+                  expenses: expenses,
+                  selectedMonth: selectedMonth,
+                  currency: ref.watch(currencyProvider),
+                ),
                 const SizedBox(height: AppSizes.lg),
                 Text(
                   'Category Breakdown',
@@ -63,6 +69,7 @@ class AnalyticsPage extends ConsumerWidget {
                   byCategory: byCategory,
                   categories: categories,
                   totalExpenses: totalExpenses,
+                  currency: ref.watch(currencyProvider),
                 ),
               ],
             ),
@@ -107,11 +114,13 @@ class _SummaryCard extends StatelessWidget {
     required this.totalExpenses,
     required this.totalIncome,
     required this.month,
+    required this.currency,
   });
 
   final double totalExpenses;
   final double totalIncome;
   final DateTime month;
+  final Currency currency;
 
   @override
   Widget build(BuildContext context) {
@@ -171,7 +180,7 @@ class _SummaryCard extends StatelessWidget {
           ),
         ),
         Text(
-          '\$${value.toStringAsFixed(2)}',
+          formatCurrency(value, currency),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
             color: color,
@@ -267,10 +276,15 @@ class _PieChartCard extends StatelessWidget {
 }
 
 class _BarChartCard extends StatelessWidget {
-  const _BarChartCard({required this.expenses, required this.selectedMonth});
+  const _BarChartCard({
+    required this.expenses,
+    required this.selectedMonth,
+    required this.currency,
+  });
 
   final List expenses;
   final DateTime selectedMonth;
+  final Currency currency;
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +320,7 @@ class _BarChartCard extends StatelessWidget {
                     showTitles: true,
                     getTitlesWidget: (value, meta) {
                       return Text(
-                        '\$${value.toInt()}',
+                        '${currency.symbol}${value.toInt()}',
                         style: const TextStyle(fontSize: 10),
                       );
                     },
@@ -371,11 +385,13 @@ class _CategoryBreakdown extends StatelessWidget {
     required this.byCategory,
     required this.categories,
     required this.totalExpenses,
+    required this.currency,
   });
 
   final Map<String, double> byCategory;
   final List<Category> categories;
   final double totalExpenses;
+  final Currency currency;
 
   @override
   Widget build(BuildContext context) {
@@ -405,6 +421,7 @@ class _CategoryBreakdown extends StatelessWidget {
               category: category,
               amount: entry.value,
               percentage: percentage,
+              currency: currency,
             );
           }).toList(),
         ),
@@ -418,11 +435,13 @@ class _CategoryItem extends StatelessWidget {
     required this.category,
     required this.amount,
     required this.percentage,
+    required this.currency,
   });
 
   final Category category;
   final double amount;
   final double percentage;
+  final Currency currency;
 
   Color _parseColor(String hexColor) {
     try {
@@ -466,7 +485,7 @@ class _CategoryItem extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '\$${amount.toStringAsFixed(2)}',
+            formatCurrency(amount, currency),
             style: Theme.of(
               context,
             ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),

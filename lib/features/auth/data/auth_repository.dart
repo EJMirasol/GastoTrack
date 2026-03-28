@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/user.dart';
 import '../../../core/services/local_cache_service.dart';
+import '../../../core/services/convex_service.dart';
 
 class AuthState {
   final User? user;
@@ -27,22 +28,52 @@ class AuthState {
 
 class AuthNotifier extends StateNotifier<AuthState> {
   final LocalCacheService _cache;
+  final ConvexService _convex;
 
-  AuthNotifier(this._cache) : super(const AuthState()) {
-    _loadStoredUser();
+  AuthNotifier(this._cache, this._convex) : super(const AuthState()) {
+    _restoreSession();
   }
 
-  Future<void> _loadStoredUser() async {
-    final cachedUser = _cache.getCachedUserData('currentUser');
+  User? _userFromResponse(Map<String, dynamic> data) {
+    final user = data['user'] as Map<String, dynamic>?;
+    if (user == null) return null;
+    return User(
+      id: user['id'] as String,
+      email: user['email'] as String,
+      name: user['name'] as String?,
+      subscriptionStatus: (user['subscriptionStatus'] as String?) == 'pro'
+          ? SubscriptionStatus.pro
+          : SubscriptionStatus.free,
+      createdAt: user['createdAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(
+              (user['createdAt'] as num).toInt(),
+            )
+          : DateTime.now(),
+    );
+  }
 
-    if (cachedUser != null) {
-      try {
-        final user = User.fromJson(cachedUser);
+  Future<void> _restoreSession() async {
+    final cookie = _cache.getSetting<String>('session_cookie');
+    if (cookie == null) return;
+
+    try {
+      _convex.setSessionCookie(cookie);
+      final result = await _convex.getSession();
+      final user = _userFromResponse(result);
+
+      if (user != null) {
+        await _cache.saveSetting('current_user_id', user.id);
+        await _cache.cacheUserData('currentUser', user.toJson());
         state = AuthState(user: user);
-      } catch (e) {
-        // Invalid cache, clear it
-        await _cache.saveSetting('currentUser', null);
+      } else {
+        await _cache.saveSetting('session_cookie', null);
+        await _cache.saveSetting('current_user_id', null);
+        _convex.setSessionCookie(null);
       }
+    } catch (_) {
+      await _cache.saveSetting('session_cookie', null);
+      await _cache.saveSetting('current_user_id', null);
+      _convex.setSessionCookie(null);
     }
   }
 
@@ -63,33 +94,32 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
 
     try {
-      // Check if user already exists locally
-      final existingEmail = _cache.getSetting<String>('user_email');
-      if (existingEmail == email) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'An account with this email already exists',
-        );
-        return false;
-      }
-
-      // Create user locally
-      final userId = 'user_${DateTime.now().millisecondsSinceEpoch}';
-      final user = User(
-        id: userId,
+      final result = await _convex.signUp(
         email: email,
+        password: password,
         name: name,
-        subscriptionStatus: SubscriptionStatus.free,
-        createdAt: DateTime.now(),
       );
 
-      // Store user data
-      await _cache.cacheUserData('currentUser', user.toJson());
-      await _cache.saveSetting('user_email', email);
-      await _cache.saveSetting('user_password', password);
+      final user = _userFromResponse(result);
+      if (user != null) {
+        final cookie = _convex.sessionCookie;
+        if (cookie != null) {
+          await _cache.saveSetting('session_cookie', cookie);
+        }
+        await _cache.saveSetting('current_user_id', user.id);
+        await _cache.cacheUserData('currentUser', user.toJson());
+        state = AuthState(user: user);
+        return true;
+      }
 
-      state = AuthState(user: user);
-      return true;
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Sign up failed: no user returned',
+      );
+      return false;
+    } on ConvexApiException catch (e) {
+      state = state.copyWith(isLoading: false, error: e.message);
+      return false;
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -103,35 +133,28 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final storedEmail = _cache.getSetting<String>('user_email');
-      final storedPassword = _cache.getSetting<String>('user_password');
+      final result = await _convex.signIn(email: email, password: password);
 
-      if (storedEmail != email || storedPassword != password) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'Invalid email or password',
-        );
-        return false;
-      }
-
-      // Load cached user
-      final cachedUser = _cache.getCachedUserData('currentUser');
-      if (cachedUser != null) {
-        final user = User.fromJson(cachedUser);
+      final user = _userFromResponse(result);
+      if (user != null) {
+        final cookie = _convex.sessionCookie;
+        if (cookie != null) {
+          await _cache.saveSetting('session_cookie', cookie);
+        }
+        await _cache.saveSetting('current_user_id', user.id);
+        await _cache.cacheUserData('currentUser', user.toJson());
         state = AuthState(user: user);
         return true;
       }
 
-      // Create user from stored data
-      final user = User(
-        id: 'user_${DateTime.now().millisecondsSinceEpoch}',
-        email: email,
-        subscriptionStatus: SubscriptionStatus.free,
-        createdAt: DateTime.now(),
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Sign in failed: invalid credentials',
       );
-      await _cache.cacheUserData('currentUser', user.toJson());
-      state = AuthState(user: user);
-      return true;
+      return false;
+    } on ConvexApiException catch (e) {
+      state = state.copyWith(isLoading: false, error: e.message);
+      return false;
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -145,20 +168,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final storedEmail = _cache.getSetting<String>('user_email');
-
-      if (storedEmail != email) {
-        state = state.copyWith(
-          isLoading: false,
-          error: 'No account found with this email',
-        );
-        return false;
-      }
-
-      // In a real app, this would send an email
-      // For now, we'll just show a success message
+      await _convex.requestPasswordReset(email: email);
       state = state.copyWith(isLoading: false);
       return true;
+    } on ConvexApiException catch (e) {
+      state = state.copyWith(isLoading: false, error: e.message);
+      return false;
     } catch (e) {
       state = state.copyWith(
         isLoading: false,
@@ -169,7 +184,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> signOut() async {
-    await _cache.saveSetting('currentUser', null);
+    try {
+      await _convex.signOut();
+    } catch (_) {}
+
+    await _cache.saveSetting('session_cookie', null);
+    await _cache.saveSetting('current_user_id', null);
+    _convex.setSessionCookie(null);
     state = const AuthState();
   }
 
@@ -186,7 +207,8 @@ final localCacheServiceProvider = Provider<LocalCacheService>((ref) {
 
 final authProvider = StateNotifierProvider<AuthNotifier, AuthState>((ref) {
   final cache = ref.watch(localCacheServiceProvider);
-  return AuthNotifier(cache);
+  final convex = ref.watch(convexServiceProvider);
+  return AuthNotifier(cache, convex);
 });
 
 final isAuthenticatedProvider = Provider<bool>((ref) {

@@ -7,9 +7,12 @@
     "deploy": "convex deploy"
   },
   "dependencies": {
-    "convex": "^1.12.0"
+    "@convex-dev/better-auth": "^0.11.3",
+    "better-auth": "^1.5.6",
+    "convex": "^1.34.1"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "typescript": "^5.0.0"
   }
 }

@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../domain/expense.dart';
 import '../data/expense_repository.dart';
 import '../../../core/constants/constants.dart';
+import '../../../core/services/currency_service.dart';
+import '../../auth/data/auth_repository.dart';
 
 class AddExpensePage extends ConsumerStatefulWidget {
   final String? groupId;
@@ -103,6 +105,7 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
   }
 
   Widget _buildAmountField() {
+    final currency = ref.watch(currencyProvider);
     return TextFormField(
       controller: _amountController,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -111,7 +114,7 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
       ],
       decoration: InputDecoration(
         labelText: 'Amount',
-        prefixText: '\$ ',
+        prefixText: '${currency.symbol} ',
         suffixIcon: IconButton(
           icon: const Icon(Icons.calculate_outlined),
           onPressed: () {},
@@ -141,7 +144,7 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
         : categories.where((c) => c.name != 'Salary').toList();
 
     return DropdownButtonFormField<String>(
-      initialValue: _selectedCategoryId,
+      value: _selectedCategoryId,
       decoration: const InputDecoration(labelText: 'Category'),
       items: filteredCategories.map<DropdownMenuItem<String>>((category) {
         return DropdownMenuItem<String>(
@@ -217,16 +220,19 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
     }
   }
 
-  void _save() {
+  Future<void> _save() async {
     if (_formKey.currentState!.validate()) {
       final amount = double.parse(_amountController.text);
 
-      ref
+      final currentUser = ref.read(currentUserProvider);
+      final userId = currentUser?.id ?? 'demo-user';
+
+      await ref
           .read(expensesProvider.notifier)
           .addExpense(
             amount: amount,
             categoryId: _selectedCategoryId!,
-            userId: 'demo-user',
+            userId: userId,
             groupId: _groupId,
             description: _descriptionController.text.isNotEmpty
                 ? _descriptionController.text
@@ -235,18 +241,19 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
             type: _type,
           );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _type == ExpenseType.expense
-                ? 'Expense added successfully'
-                : 'Income added successfully',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _type == ExpenseType.expense
+                  ? 'Expense added successfully'
+                  : 'Income added successfully',
+            ),
+            behavior: SnackBarBehavior.floating,
           ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-
-      context.pop();
+        );
+        context.pop();
+      }
     }
   }
 
