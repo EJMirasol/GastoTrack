@@ -6,8 +6,8 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/constants.dart';
 import '../../../core/services/currency_service.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../expenses/data/expense_repository.dart';
-import '../../expenses/domain/expense.dart';
+import '../../transactions/data/transaction_repository.dart';
+import '../../transactions/domain/transaction.dart';
 import '../domain/group.dart';
 import '../presentation/groups_page.dart';
 
@@ -38,7 +38,7 @@ class _GroupDetailPageState extends ConsumerState<GroupDetailPage> {
     final groups = ref.watch(groupsProvider);
     final group = groups.where((g) => g.id == widget.groupId).firstOrNull;
     final currentUser = ref.watch(currentUserProvider);
-    final expenses = ref.watch(expensesProvider);
+    final expenses = ref.watch(transactionsProvider);
 
     if (group == null) {
       return Scaffold(
@@ -95,10 +95,10 @@ class _GroupDetailPageState extends ConsumerState<GroupDetailPage> {
               ),
             ),
             if (groupExpenses.isEmpty)
-              const _EmptyExpensesState()
+              const _EmptyTransactionsState()
             else
               ...groupExpenses.map(
-                (expense) => _GroupExpenseTile(
+                (expense) => _GroupTransactionTile(
                   expense: expense,
                   currency: ref.watch(currencyProvider),
                 ),
@@ -135,7 +135,10 @@ class _GroupDetailPageState extends ConsumerState<GroupDetailPage> {
     );
   }
 
-  List<Settlement> _calculateSettlements(Group group, List<Expense> expenses) {
+  List<Settlement> _calculateSettlements(
+    Group group,
+    List<Transaction> expenses,
+  ) {
     final balances = <String, double>{};
 
     for (final member in group.members) {
@@ -302,8 +305,8 @@ class _MembersCard extends StatelessWidget {
   }
 }
 
-class _EmptyExpensesState extends StatelessWidget {
-  const _EmptyExpensesState();
+class _EmptyTransactionsState extends StatelessWidget {
+  const _EmptyTransactionsState();
 
   @override
   Widget build(BuildContext context) {
@@ -336,10 +339,10 @@ class _EmptyExpensesState extends StatelessWidget {
   }
 }
 
-class _GroupExpenseTile extends StatelessWidget {
-  const _GroupExpenseTile({required this.expense, required this.currency});
+class _GroupTransactionTile extends StatelessWidget {
+  const _GroupTransactionTile({required this.expense, required this.currency});
 
-  final Expense expense;
+  final Transaction expense;
   final Currency currency;
 
   @override

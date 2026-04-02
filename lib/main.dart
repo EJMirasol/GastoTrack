@@ -14,8 +14,12 @@ void main() async {
 
   final convexService = ConvexService();
   final savedCookie = cacheService.getSetting<String>('session_cookie');
+  final savedJwt = cacheService.getSetting<String>('convex_jwt');
   if (savedCookie != null) {
     convexService.setSessionCookie(savedCookie);
+  }
+  if (savedJwt != null) {
+    convexService.setConvexJwt(savedJwt);
   }
 
   final notificationService = NotificationService();

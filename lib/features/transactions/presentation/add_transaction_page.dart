@@ -3,27 +3,27 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import '../domain/expense.dart';
-import '../data/expense_repository.dart';
+import '../domain/transaction.dart';
+import '../data/transaction_repository.dart';
 import '../../../core/constants/constants.dart';
 import '../../../core/services/currency_service.dart';
 import '../../auth/data/auth_repository.dart';
 
-class AddExpensePage extends ConsumerStatefulWidget {
+class AddTransactionPage extends ConsumerStatefulWidget {
   final String? groupId;
 
-  const AddExpensePage({this.groupId, super.key});
+  const AddTransactionPage({this.groupId, super.key});
 
   @override
-  ConsumerState<AddExpensePage> createState() => _AddExpensePageState();
+  ConsumerState<AddTransactionPage> createState() => _AddTransactionPageState();
 }
 
-class _AddExpensePageState extends ConsumerState<AddExpensePage> {
+class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  ExpenseType _type = ExpenseType.expense;
+  TransactionType _type = TransactionType.expense;
   String? _selectedCategoryId;
   DateTime _selectedDate = DateTime.now();
   String? _groupId;
@@ -50,7 +50,7 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
         title: Text(
           _groupId != null
               ? 'Add Group Expense'
-              : _type == ExpenseType.expense
+              : _type == TransactionType.expense
               ? 'Add Expense'
               : 'Add Income',
         ),
@@ -81,15 +81,15 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
   }
 
   Widget _buildTypeSelector() {
-    return SegmentedButton<ExpenseType>(
+    return SegmentedButton<TransactionType>(
       segments: const [
         ButtonSegment(
-          value: ExpenseType.expense,
+          value: TransactionType.expense,
           label: Text('Expense'),
           icon: Icon(Icons.arrow_upward),
         ),
         ButtonSegment(
-          value: ExpenseType.income,
+          value: TransactionType.income,
           label: Text('Income'),
           icon: Icon(Icons.arrow_downward),
         ),
@@ -137,14 +137,14 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
   }
 
   Widget _buildCategoryDropdown(List categories) {
-    final filteredCategories = _type == ExpenseType.income
+    final filteredCategories = _type == TransactionType.income
         ? categories
               .where((c) => c.name == 'Salary' || c.name == 'Other')
               .toList()
         : categories.where((c) => c.name != 'Salary').toList();
 
     return DropdownButtonFormField<String>(
-      value: _selectedCategoryId,
+      initialValue: _selectedCategoryId,
       decoration: const InputDecoration(labelText: 'Category'),
       items: filteredCategories.map<DropdownMenuItem<String>>((category) {
         return DropdownMenuItem<String>(
@@ -227,9 +227,9 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
       final currentUser = ref.read(currentUserProvider);
       final userId = currentUser?.id ?? 'demo-user';
 
-      await ref
-          .read(expensesProvider.notifier)
-          .addExpense(
+      final success = await ref
+          .read(transactionsProvider.notifier)
+          .addTransaction(
             amount: amount,
             categoryId: _selectedCategoryId!,
             userId: userId,
@@ -245,9 +245,11 @@ class _AddExpensePageState extends ConsumerState<AddExpensePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _type == ExpenseType.expense
-                  ? 'Expense added successfully'
-                  : 'Income added successfully',
+              success
+                  ? (_type == TransactionType.expense
+                        ? 'Expense added successfully'
+                        : 'Income added successfully')
+                  : 'Saved offline — will sync when connected',
             ),
             behavior: SnackBarBehavior.floating,
           ),

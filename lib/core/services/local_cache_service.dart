@@ -2,14 +2,14 @@ import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class LocalCacheService {
-  static const String expensesBoxName = 'expenses';
+  static const String transactionsBoxName = 'transactions';
   static const String pendingBoxName = 'pending_mutations';
   static const String userDataBoxName = 'user_data';
   static const String settingsBoxName = 'settings';
   static const String groupsBoxName = 'groups';
   static const String budgetsBoxName = 'budgets';
 
-  late final Box<Map> _expensesBox;
+  late final Box<Map> _transactionsBox;
   late final Box<Map> _pendingBox;
   late final Box<String> _userDataBox;
   late final Box<dynamic> _settingsBox;
@@ -19,7 +19,7 @@ class LocalCacheService {
   Future<void> initialize() async {
     await Hive.initFlutter();
 
-    _expensesBox = await Hive.openBox<Map>(expensesBoxName);
+    _transactionsBox = await Hive.openBox<Map>(transactionsBoxName);
     _pendingBox = await Hive.openBox<Map>(pendingBoxName);
     _userDataBox = await Hive.openBox<String>(userDataBoxName);
     _settingsBox = await Hive.openBox(settingsBoxName);
@@ -27,31 +27,31 @@ class LocalCacheService {
     _budgetsBox = await Hive.openBox<Map>(budgetsBoxName);
   }
 
-  // === Expense Operations ===
+  // === Transaction Operations ===
 
-  Future<void> saveExpense(Map<String, dynamic> expense) async {
-    final id = expense['id'] as String;
-    await _expensesBox.put(id, {
-      ...expense,
+  Future<void> saveTransaction(Map<String, dynamic> transaction) async {
+    final id = transaction['id'] as String;
+    await _transactionsBox.put(id, {
+      ...transaction,
       'cachedAt': DateTime.now().toIso8601String(),
     });
   }
 
-  Map<String, dynamic>? getExpense(String id) {
-    final data = _expensesBox.get(id);
+  Map<String, dynamic>? getTransaction(String id) {
+    final data = _transactionsBox.get(id);
     if (data == null) return null;
     return Map<String, dynamic>.from(data);
   }
 
-  List<Map<String, dynamic>> getAllExpenses(String userId) {
-    return _expensesBox.values
+  List<Map<String, dynamic>> getAllTransactions(String userId) {
+    return _transactionsBox.values
         .where((e) => e['userId'] == userId)
         .map((e) => Map<String, dynamic>.from(e))
         .toList();
   }
 
-  Future<void> deleteExpense(String id) async {
-    await _expensesBox.delete(id);
+  Future<void> deleteTransaction(String id) async {
+    await _transactionsBox.delete(id);
   }
 
   // === Pending Mutation Queue ===
@@ -193,7 +193,7 @@ class LocalCacheService {
     final now = DateTime.now();
     final expirationDays = 30;
 
-    for (final box in [_expensesBox, _groupsBox, _budgetsBox]) {
+    for (final box in [_transactionsBox, _groupsBox, _budgetsBox]) {
       final keysToDelete = <dynamic>[];
 
       for (final key in box.keys) {

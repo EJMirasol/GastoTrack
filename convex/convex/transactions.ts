@@ -5,14 +5,14 @@ import { authComponent } from './auth';
 async function requireAuth(ctx: any): Promise<string> {
   const user = await authComponent.getAuthUser(ctx);
   if (!user) throw new Error('Not authenticated');
-  return (user as any).id as string;
+  return (user._id as unknown as string).toString();
 }
 
 export const getByUser = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query('expenses')
+      .query('transactions')
       .withIndex('by_user', (q) => q.eq('userId', args.userId))
       .order('desc')
       .collect();
@@ -27,7 +27,7 @@ export const getByUserAndMonth = query({
   },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query('expenses')
+      .query('transactions')
       .withIndex('by_user_date', (q) =>
         q.eq('userId', args.userId).gte('date', args.startOfMonth).lte('date', args.endOfMonth)
       )
@@ -40,7 +40,7 @@ export const getByGroup = query({
   args: { groupId: v.id('groups') },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query('expenses')
+      .query('transactions')
       .withIndex('by_group', (q) => q.eq('groupId', args.groupId))
       .order('desc')
       .collect();
@@ -60,7 +60,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
-    return await ctx.db.insert('expenses', {
+    return await ctx.db.insert('transactions', {
       amount: args.amount,
       categoryId: args.categoryId,
       userId,
@@ -77,7 +77,7 @@ export const create = mutation({
 
 export const update = mutation({
   args: {
-    id: v.id('expenses'),
+    id: v.id('transactions'),
     amount: v.optional(v.number()),
     description: v.optional(v.string()),
     date: v.optional(v.number()),
@@ -85,9 +85,9 @@ export const update = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
-    const expense = await ctx.db.get(args.id);
-    if (!expense || expense.userId !== userId) {
-      throw new Error('Expense not found or unauthorized');
+    const doc = await ctx.db.get(args.id);
+    if (!doc || doc.userId !== userId) {
+      throw new Error('Transaction not found or unauthorized');
     }
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
@@ -95,13 +95,15 @@ export const update = mutation({
 });
 
 export const remove = mutation({
-  args: { id: v.id('expenses') },
+  args: { id: v.id('transactions') },
   handler: async (ctx, args) => {
     const userId = await requireAuth(ctx);
-    const expense = await ctx.db.get(args.id);
-    if (!expense || expense.userId !== userId) {
-      throw new Error('Expense not found or unauthorized');
+    const doc = await ctx.db.get(args.id);
+    if (!doc || doc.userId !== userId) {
+      throw new Error('Transaction not found or unauthorized');
     }
     await ctx.db.delete(args.id);
   },
 });
+
+

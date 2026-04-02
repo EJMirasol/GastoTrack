@@ -5,7 +5,7 @@ import { authComponent } from './auth';
 async function requireAuth(ctx: any): Promise<string> {
   const user = await authComponent.getAuthUser(ctx);
   if (!user) throw new Error('Not authenticated');
-  return (user as any).id as string;
+  return (user._id as unknown as string).toString();
 }
 
 export const getAll = query({

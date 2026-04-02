@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../features/expenses/domain/expense.dart';
-import '../../features/expenses/domain/category.dart';
-import '../../features/expenses/data/expense_repository.dart';
+import '../../features/transactions/domain/transaction.dart';
+import '../../features/transactions/domain/category.dart';
+import '../../features/transactions/data/transaction_repository.dart';
 import '../../core/constants/constants.dart';
 import '../../core/services/currency_service.dart';
 
-class ExpenseListItem extends ConsumerWidget {
-  const ExpenseListItem({
+class TransactionListItem extends ConsumerWidget {
+  const TransactionListItem({
     required this.expense,
     this.onTap,
     this.onLongPress,
     super.key,
   });
 
-  final Expense expense;
+  final Transaction expense;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
@@ -31,7 +31,7 @@ class ExpenseListItem extends ConsumerWidget {
       ),
     );
 
-    final isExpense = expense.type == ExpenseType.expense;
+    final isExpense = expense.type == TransactionType.expense;
     final color = isExpense ? AppColors.expense : AppColors.income;
     final currency = ref.watch(currencyProvider);
 

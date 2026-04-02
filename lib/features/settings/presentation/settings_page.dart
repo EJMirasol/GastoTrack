@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/services/currency_service.dart';
+import '../../auth/data/auth_repository.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -8,16 +10,32 @@ class SettingsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currency = ref.watch(currencyProvider);
+    final user = ref.watch(currentUserProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
           ListTile(
-            leading: const Icon(Icons.person_outline),
-            title: const Text('Account'),
+            leading: CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              backgroundImage: user?.imageProvider,
+              child: user?.imageProvider == null
+                  ? Text(
+                      user?.name?.isNotEmpty ?? false
+                          ? user!.name![0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    )
+                  : null,
+            ),
+            title: Text(user?.name ?? 'Unknown User'),
+            subtitle: Text(user?.email ?? ''),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+            onTap: () => context.push('/settings/profile'),
           ),
           ListTile(
             leading: const Icon(Icons.attach_money),

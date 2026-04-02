@@ -14,6 +14,9 @@ class AppStrings {
   static const String settings = 'Settings';
   static const String noExpenses = 'No expenses yet';
   static const String noExpensesDesc = 'Tap + to add your first expense';
+  static const String noTransactions = 'No transactions yet';
+  static const String noTransactionsDesc =
+      'Tap + to add your first transaction';
   static const String amount = 'Amount';
   static const String description = 'Description';
   static const String date = 'Date';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../features/expenses/data/expense_repository.dart';
+import '../../features/transactions/data/transaction_repository.dart';
 import '../../core/constants/constants.dart';
 import '../../core/services/currency_service.dart';
 

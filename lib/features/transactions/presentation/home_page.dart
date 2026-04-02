@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../shared/widgets/widgets.dart';
-import '../data/expense_repository.dart';
+import '../data/transaction_repository.dart';
 import '../data/budget_service.dart';
 import '../../../core/constants/constants.dart';
 import '../../auth/data/auth_repository.dart';
@@ -14,13 +14,13 @@ class HomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final expenses = ref.watch(monthlyExpensesProvider);
+    final expenses = ref.watch(monthlyTransactionsProvider);
     final selectedMonth = ref.watch(selectedMonthProvider);
 
     ref.listen<AuthState>(authProvider, (previous, next) {
       if (next.user != null) {
         final userId = next.user!.id;
-        ref.read(expensesProvider.notifier).loadForUser(userId);
+        ref.read(transactionsProvider.notifier).loadForUser(userId);
         ref.read(groupsProvider.notifier).loadForUser(userId);
         ref.read(budgetsProvider.notifier).loadForUser(userId);
       }
@@ -45,7 +45,7 @@ class HomePage extends ConsumerWidget {
           final user = ref.read(currentUserProvider);
           if (user != null) {
             await Future.wait([
-              ref.read(expensesProvider.notifier).loadForUser(user.id),
+              ref.read(transactionsProvider.notifier).loadForUser(user.id),
               ref.read(groupsProvider.notifier).loadForUser(user.id),
               ref.read(budgetsProvider.notifier).loadForUser(user.id),
             ]);
@@ -86,7 +86,7 @@ class HomePage extends ConsumerWidget {
               SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
                   final expense = expenses[index];
-                  return ExpenseListItem(
+                  return TransactionListItem(
                     expense: expense,
                     onTap: () {},
                     onLongPress: () =>
@@ -141,8 +141,8 @@ class HomePage extends ConsumerWidget {
           TextButton(
             onPressed: () async {
               await ref
-                  .read(expensesProvider.notifier)
-                  .removeExpense(expenseId);
+                  .read(transactionsProvider.notifier)
+                  .removeTransaction(expenseId);
               if (context.mounted) Navigator.pop(context);
             },
             child: Text(
@@ -172,12 +172,12 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: AppSizes.md),
           Text(
-            AppStrings.noExpenses,
+            AppStrings.noTransactions,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: AppSizes.xs),
           Text(
-            AppStrings.noExpensesDesc,
+            AppStrings.noTransactionsDesc,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),

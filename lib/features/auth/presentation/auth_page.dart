@@ -13,6 +13,7 @@ class AuthPage extends ConsumerStatefulWidget {
 
 class _AuthPageState extends ConsumerState<AuthPage> {
   bool _isSignUp = false;
+  bool _obscurePassword = true;
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _nameController = TextEditingController();
@@ -149,11 +150,21 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   Widget _buildPasswordField() {
     return TextFormField(
       controller: _passwordController,
-      decoration: const InputDecoration(
+      decoration: InputDecoration(
         labelText: 'Password',
-        prefixIcon: Icon(Icons.lock_outline),
+        prefixIcon: const Icon(Icons.lock_outline),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+          ),
+          onPressed: () {
+            setState(() {
+              _obscurePassword = !_obscurePassword;
+            });
+          },
+        ),
       ),
-      obscureText: true,
+      obscureText: _obscurePassword,
       validator: (value) {
         if (value == null || value.isEmpty) {
           return 'Please enter your password';

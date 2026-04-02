@@ -58,6 +58,8 @@ export const getUserProfile = query({
 export const updateProfile = mutation({
   args: {
     name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    image: v.optional(v.string()),
     subscriptionStatus: v.optional(
       v.union(v.literal('free'), v.literal('pro')),
     ),

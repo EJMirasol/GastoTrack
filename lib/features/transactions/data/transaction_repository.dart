@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import '../domain/expense.dart';
+import '../domain/transaction.dart';
 import '../domain/category.dart';
 import '../../../core/services/local_cache_service.dart';
 import '../../../core/services/convex_service.dart';
@@ -85,27 +85,27 @@ final categoriesProvider = Provider<List<Category>>((ref) {
   return defaultCategories;
 });
 
-class ExpenseNotifier extends StateNotifier<List<Expense>> {
+class TransactionNotifier extends StateNotifier<List<Transaction>> {
   final LocalCacheService _cache;
   final ConvexService _convex;
 
-  ExpenseNotifier(this._cache, this._convex) : super([]);
+  TransactionNotifier(this._cache, this._convex) : super([]);
 
   Future<void> loadForUser(String userId) async {
-    final cachedExpenses = _cache.getAllExpenses(userId);
-    if (cachedExpenses.isNotEmpty) {
-      state = cachedExpenses.map((e) => Expense.fromJson(e)).toList();
+    final cached = _cache.getAllTransactions(userId);
+    if (cached.isNotEmpty) {
+      state = cached.map((e) => Transaction.fromJson(e)).toList();
     }
 
     try {
-      final result = await _convex.query('expenses:getByUser', {
+      final result = await _convex.query('transactions:getByUser', {
         'userId': userId,
       });
-      final remoteExpenses = result['value'] as List<dynamic>? ?? [];
+      final remote = result['value'] as List<dynamic>? ?? [];
 
-      final expenses = remoteExpenses.map((e) {
+      final transactions = remote.map((e) {
         final map = e as Map<String, dynamic>;
-        return Expense(
+        return Transaction(
           id: map['_id'] as String,
           amount: (map['amount'] as num).toDouble(),
           categoryId: map['categoryId'] as String,
@@ -114,8 +114,8 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
           description: map['description'] as String?,
           date: DateTime.fromMillisecondsSinceEpoch(map['date'] as int),
           type: map['type'] == 'income'
-              ? ExpenseType.income
-              : ExpenseType.expense,
+              ? TransactionType.income
+              : TransactionType.expense,
           isRecurring: map['isRecurring'] as bool? ?? false,
           createdAt: DateTime.fromMillisecondsSinceEpoch(
             map['createdAt'] as int,
@@ -123,26 +123,24 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
         );
       }).toList();
 
-      for (final expense in expenses) {
-        await _cache.saveExpense(expense.toJson());
+      for (final t in transactions) {
+        await _cache.saveTransaction(t.toJson());
       }
-      state = expenses;
-    } catch (_) {
-      // Offline or error — keep cached data
-    }
+      state = transactions;
+    } catch (_) {}
   }
 
-  Future<void> addExpense({
+  Future<bool> addTransaction({
     required double amount,
     required String categoryId,
     required String userId,
     String? groupId,
     String? description,
     required DateTime date,
-    ExpenseType type = ExpenseType.expense,
+    TransactionType type = TransactionType.expense,
   }) async {
     final localId = _uuid.v4();
-    final expense = Expense(
+    final transaction = Transaction(
       id: localId,
       amount: amount,
       categoryId: categoryId,
@@ -153,8 +151,8 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
       type: type,
       createdAt: DateTime.now(),
     );
-    await _cache.saveExpense(expense.toJson());
-    state = [...state, expense];
+    await _cache.saveTransaction(transaction.toJson());
+    state = [...state, transaction];
 
     try {
       final args = <String, dynamic>{
@@ -165,22 +163,24 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
       };
       if (groupId != null) args['groupId'] = groupId;
       if (description != null) args['description'] = description;
-      final result = await _convex.mutation('expenses:create', args);
+      final result = await _convex.mutation('transactions:create', args);
       final convexId = result['value'] as String?;
       if (convexId != null) {
-        final syncedExpense = expense.copyWith(id: convexId);
-        await _cache.saveExpense({
-          ...syncedExpense.toJson(),
+        await _cache.deleteTransaction(localId);
+        final synced = transaction.copyWith(id: convexId);
+        await _cache.saveTransaction({
+          ...synced.toJson(),
           'convexId': convexId,
           'syncStatus': 'synced',
         });
-        state = state.map((e) => e.id == localId ? syncedExpense : e).toList();
+        state = state.map((e) => e.id == localId ? synced : e).toList();
       }
+      return true;
     } catch (_) {
       await _cache.addToSyncQueue({
         'id': localId,
         'type': 'create',
-        'collection': 'expenses',
+        'collection': 'transactions',
         'recordId': localId,
         'payload': {
           'amount': amount,
@@ -191,32 +191,33 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
           'type': type.name,
         },
       });
+      return false;
     }
   }
 
-  Future<void> removeExpense(String id) async {
-    await _cache.deleteExpense(id);
+  Future<void> removeTransaction(String id) async {
+    await _cache.deleteTransaction(id);
     state = state.where((e) => e.id != id).toList();
 
     try {
-      await _convex.mutation('expenses:remove', {'id': id});
+      await _convex.mutation('transactions:remove', {'id': id});
     } catch (_) {
       await _cache.addToSyncQueue({
         'id': '${id}_delete',
         'type': 'delete',
-        'collection': 'expenses',
+        'collection': 'transactions',
         'recordId': id,
         'payload': {},
       });
     }
   }
 
-  Future<void> updateExpense(Expense updated) async {
-    await _cache.saveExpense(updated.toJson());
+  Future<void> updateTransaction(Transaction updated) async {
+    await _cache.saveTransaction(updated.toJson());
     state = state.map((e) => e.id == updated.id ? updated : e).toList();
 
     try {
-      await _convex.mutation('expenses:update', {
+      await _convex.mutation('transactions:update', {
         'id': updated.id,
         'amount': updated.amount,
         'description': updated.description,
@@ -227,70 +228,71 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
       await _cache.addToSyncQueue({
         'id': '${updated.id}_update',
         'type': 'update',
-        'collection': 'expenses',
+        'collection': 'transactions',
         'recordId': updated.id,
         'payload': updated.toJson(),
       });
     }
   }
 
-  List<Expense> getExpensesForMonth(DateTime month) {
+  List<Transaction> getTransactionsForMonth(DateTime month) {
     return state.where((e) {
       return e.date.year == month.year && e.date.month == month.month;
     }).toList();
   }
 
   double getTotalExpensesForMonth(DateTime month) {
-    return getExpensesForMonth(month)
-        .where((e) => e.type == ExpenseType.expense)
+    return getTransactionsForMonth(month)
+        .where((e) => e.type == TransactionType.expense)
         .fold(0, (sum, e) => sum + e.amount);
   }
 
   double getTotalIncomeForMonth(DateTime month) {
-    return getExpensesForMonth(month)
-        .where((e) => e.type == ExpenseType.income)
+    return getTransactionsForMonth(month)
+        .where((e) => e.type == TransactionType.income)
         .fold(0, (sum, e) => sum + e.amount);
   }
 }
 
-final expensesProvider = StateNotifierProvider<ExpenseNotifier, List<Expense>>((
-  ref,
-) {
-  final cache = ref.watch(localCacheServiceProvider);
-  final convex = ref.watch(convexServiceProvider);
-  return ExpenseNotifier(cache, convex);
-});
+final transactionsProvider =
+    StateNotifierProvider<TransactionNotifier, List<Transaction>>((ref) {
+      final cache = ref.watch(localCacheServiceProvider);
+      final convex = ref.watch(convexServiceProvider);
+      return TransactionNotifier(cache, convex);
+    });
 
 final selectedMonthProvider = StateProvider<DateTime>((ref) {
   return DateTime.now();
 });
 
-final monthlyExpensesProvider = Provider<List<Expense>>((ref) {
+final monthlyTransactionsProvider = Provider<List<Transaction>>((ref) {
   final month = ref.watch(selectedMonthProvider);
-  final expenses = ref.watch(expensesProvider);
-  return expenses.where((e) {
+  final transactions = ref.watch(transactionsProvider);
+  return transactions.where((e) {
     return e.date.year == month.year && e.date.month == month.month;
   }).toList();
 });
 
 final totalExpensesForMonthProvider = Provider<double>((ref) {
-  final expenses = ref.watch(monthlyExpensesProvider);
-  return expenses
-      .where((e) => e.type == ExpenseType.expense)
+  final transactions = ref.watch(monthlyTransactionsProvider);
+  return transactions
+      .where((e) => e.type == TransactionType.expense)
       .fold(0.0, (sum, e) => sum + e.amount);
 });
 
 final totalIncomeForMonthProvider = Provider<double>((ref) {
-  final expenses = ref.watch(monthlyExpensesProvider);
-  return expenses
-      .where((e) => e.type == ExpenseType.income)
+  final transactions = ref.watch(monthlyTransactionsProvider);
+  return transactions
+      .where((e) => e.type == TransactionType.income)
       .fold(0.0, (sum, e) => sum + e.amount);
 });
 
-final expensesByCategoryProvider = Provider<Map<String, double>>((ref) {
-  final expenses = ref.watch(monthlyExpensesProvider);
+final transactionsByCategoryProvider = Provider<Map<String, double>>((ref) {
+  final transactions = ref.watch(monthlyTransactionsProvider);
   final byCategory = <String, double>{};
-  for (final e in expenses.where((e) => e.type == ExpenseType.expense)) {
+  for (final e in transactions.where(
+    (e) => e.type == TransactionType.expense,
+  )) {
     byCategory[e.categoryId] = (byCategory[e.categoryId] ?? 0) + e.amount;
   }
   return byCategory;

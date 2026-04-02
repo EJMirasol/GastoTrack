@@ -1,6 +1,6 @@
-enum ExpenseType { expense, income }
+enum TransactionType { expense, income }
 
-class Expense {
+class Transaction {
   final String id;
   final double amount;
   final String categoryId;
@@ -8,12 +8,12 @@ class Expense {
   final String? groupId;
   final String? description;
   final DateTime date;
-  final ExpenseType type;
+  final TransactionType type;
   final bool isRecurring;
   final String? recurringRuleId;
   final DateTime createdAt;
 
-  const Expense({
+  const Transaction({
     required this.id,
     required this.amount,
     required this.categoryId,
@@ -21,13 +21,13 @@ class Expense {
     this.groupId,
     this.description,
     required this.date,
-    this.type = ExpenseType.expense,
+    this.type = TransactionType.expense,
     this.isRecurring = false,
     this.recurringRuleId,
     required this.createdAt,
   });
 
-  Expense copyWith({
+  Transaction copyWith({
     String? id,
     double? amount,
     String? categoryId,
@@ -35,12 +35,12 @@ class Expense {
     String? groupId,
     String? description,
     DateTime? date,
-    ExpenseType? type,
+    TransactionType? type,
     bool? isRecurring,
     String? recurringRuleId,
     DateTime? createdAt,
   }) {
-    return Expense(
+    return Transaction(
       id: id ?? this.id,
       amount: amount ?? this.amount,
       categoryId: categoryId ?? this.categoryId,
@@ -69,7 +69,7 @@ class Expense {
     'createdAt': createdAt.millisecondsSinceEpoch,
   };
 
-  factory Expense.fromJson(Map<String, dynamic> json) => Expense(
+  factory Transaction.fromJson(Map<String, dynamic> json) => Transaction(
     id: json['id'] as String,
     amount: (json['amount'] as num).toDouble(),
     categoryId: json['categoryId'] as String,
@@ -77,7 +77,9 @@ class Expense {
     groupId: json['groupId'] as String?,
     description: json['description'] as String?,
     date: DateTime.fromMillisecondsSinceEpoch(json['date'] as int),
-    type: json['type'] == 'income' ? ExpenseType.income : ExpenseType.expense,
+    type: json['type'] == 'income'
+        ? TransactionType.income
+        : TransactionType.expense,
     isRecurring: json['isRecurring'] as bool? ?? false,
     recurringRuleId: json['recurringRuleId'] as String?,
     createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
@@ -86,7 +88,7 @@ class Expense {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is Expense &&
+      other is Transaction &&
           id == other.id &&
           amount == other.amount &&
           date == other.date;

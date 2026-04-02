@@ -105,16 +105,16 @@ class SyncNotifier extends StateNotifier<SyncState> {
     final userId = _cache.getSetting<String>('current_user_id');
     if (userId == null) return;
 
-    await _pullExpenses(userId);
+    await _pullTransactions(userId);
     await _pullGroups(userId);
     await _pullBudgets(userId);
 
     await _cache.saveSetting('lastSync', DateTime.now().toIso8601String());
   }
 
-  Future<void> _pullExpenses(String userId) async {
+  Future<void> _pullTransactions(String userId) async {
     try {
-      final result = await _convex.query('expenses:getByUser', {
+      final result = await _convex.query('transactions:getByUser', {
         'userId': userId,
       });
       final remoteExpenses = result['value'] as List<dynamic>? ?? [];
@@ -122,7 +122,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
       for (final remote in remoteExpenses) {
         final map = remote as Map<String, dynamic>;
         final id = map['_id'] as String;
-        await _cache.saveExpense({
+        await _cache.saveTransaction({
           'id': id,
           'convexId': id,
           'syncStatus': 'synced',
@@ -254,8 +254,8 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   String? _getConvexId(String collection, String recordId) {
     switch (collection) {
-      case 'expenses':
-        return _cache.getExpense(recordId)?['convexId'] as String?;
+      case 'transactions':
+        return _cache.getTransaction(recordId)?['convexId'] as String?;
       case 'groups':
         return _cache.getGroup(recordId)?['convexId'] as String?;
       case 'budgets':
@@ -267,11 +267,13 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   void _updateConvexId(String collection, String recordId, String convexId) {
     switch (collection) {
-      case 'expenses':
-        final local = _cache.getExpense(recordId);
+      case 'transactions':
+        final local = _cache.getTransaction(recordId);
         if (local != null) {
-          _cache.saveExpense({
+          _cache.deleteTransaction(recordId);
+          _cache.saveTransaction({
             ...local,
+            'id': convexId,
             'convexId': convexId,
             'syncStatus': 'synced',
           });
@@ -280,8 +282,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
       case 'groups':
         final local = _cache.getGroup(recordId);
         if (local != null) {
+          _cache.deleteGroup(recordId);
           _cache.saveGroup({
             ...local,
+            'id': convexId,
             'convexId': convexId,
             'syncStatus': 'synced',
           });
@@ -290,8 +294,10 @@ class SyncNotifier extends StateNotifier<SyncState> {
       case 'budgets':
         final local = _cache.getBudget(recordId);
         if (local != null) {
+          _cache.deleteBudget(recordId);
           _cache.saveBudget({
             ...local,
+            'id': convexId,
             'convexId': convexId,
             'syncStatus': 'synced',
           });
@@ -302,8 +308,8 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
   void _deleteLocalRecord(String collection, String recordId) {
     switch (collection) {
-      case 'expenses':
-        _cache.deleteExpense(recordId);
+      case 'transactions':
+        _cache.deleteTransaction(recordId);
         break;
       case 'groups':
         _cache.deleteGroup(recordId);

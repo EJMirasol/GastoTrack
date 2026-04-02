@@ -67,6 +67,7 @@ class GroupNotifier extends StateNotifier<List<Group>> {
       final result = await _convex.mutation('groups:create', {'name': name});
       final convexId = result['value'] as String?;
       if (convexId != null) {
+        await _cache.deleteGroup(localId);
         await _cache.saveGroup({
           ...group.toJson(),
           'id': convexId,

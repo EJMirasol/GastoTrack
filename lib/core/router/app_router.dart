@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/auth/presentation/auth_page.dart';
-import '../../features/expenses/presentation/add_expense_page.dart';
-import '../../features/expenses/presentation/home_page.dart';
+import '../../features/transactions/presentation/add_transaction_page.dart';
+import '../../features/transactions/presentation/home_page.dart';
 import '../../features/groups/presentation/groups_page.dart';
 import '../../features/groups/presentation/group_detail_page.dart';
+import '../../features/settings/presentation/profile_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
 import '../../features/auth/data/auth_repository.dart';
 
@@ -40,7 +41,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: 'add',
-                builder: (context, state) => AddExpensePage(
+                builder: (context, state) => AddTransactionPage(
                   groupId: state.uri.queryParameters['groupId'],
                 ),
               ),
@@ -64,6 +65,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsPage(),
+            routes: [
+              GoRoute(
+                path: 'profile',
+                builder: (context, state) => const ProfilePage(),
+              ),
+            ],
           ),
         ],
       ),

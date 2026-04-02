@@ -48,3 +48,12 @@ app.*.map.json
 /windows
 /.opencode
 /windows/flutter
+/convex/.agents
+/convex/.claude
+/convex/.kilocode
+/convex/.kiro
+/convex/.windsurf
+/convex/convex/_generated/ai
+convex/AGENTS.md
+convex/CLAUDE.md
+convex/skills-lock.json

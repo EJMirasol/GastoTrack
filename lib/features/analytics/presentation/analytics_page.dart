@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import '../../expenses/data/expense_repository.dart';
-import '../../expenses/domain/category.dart';
+import '../../transactions/data/transaction_repository.dart';
+import '../../transactions/domain/category.dart';
+import '../../transactions/domain/transaction.dart';
 import '../../../core/constants/constants.dart';
 import '../../../core/services/currency_service.dart';
 
@@ -12,9 +13,9 @@ class AnalyticsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final expenses = ref.watch(monthlyExpensesProvider);
+    final expenses = ref.watch(monthlyTransactionsProvider);
     final categories = ref.watch(categoriesProvider);
-    final byCategory = ref.watch(expensesByCategoryProvider);
+    final byCategory = ref.watch(transactionsByCategoryProvider);
     final totalExpenses = ref.watch(totalExpensesForMonthProvider);
     final selectedMonth = ref.watch(selectedMonthProvider);
 
@@ -282,7 +283,7 @@ class _BarChartCard extends StatelessWidget {
     required this.currency,
   });
 
-  final List expenses;
+  final List<Transaction> expenses;
   final DateTime selectedMonth;
   final Currency currency;
 

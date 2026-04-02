@@ -41,6 +41,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       id: user['id'] as String,
       email: user['email'] as String,
       name: user['name'] as String?,
+      image: user['image'] as String?,
       subscriptionStatus: (user['subscriptionStatus'] as String?) == 'pro'
           ? SubscriptionStatus.pro
           : SubscriptionStatus.free,
@@ -54,10 +55,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> _restoreSession() async {
     final cookie = _cache.getSetting<String>('session_cookie');
-    if (cookie == null) return;
+    final jwt = _cache.getSetting<String>('convex_jwt');
+    if (cookie == null && jwt == null) return;
 
     try {
       _convex.setSessionCookie(cookie);
+      _convex.setConvexJwt(jwt);
       final result = await _convex.getSession();
       final user = _userFromResponse(result);
 
@@ -67,13 +70,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
         state = AuthState(user: user);
       } else {
         await _cache.saveSetting('session_cookie', null);
+        await _cache.saveSetting('convex_jwt', null);
         await _cache.saveSetting('current_user_id', null);
         _convex.setSessionCookie(null);
+        _convex.setConvexJwt(null);
       }
     } catch (_) {
       await _cache.saveSetting('session_cookie', null);
+      await _cache.saveSetting('convex_jwt', null);
       await _cache.saveSetting('current_user_id', null);
       _convex.setSessionCookie(null);
+      _convex.setConvexJwt(null);
     }
   }
 
@@ -105,6 +112,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         final cookie = _convex.sessionCookie;
         if (cookie != null) {
           await _cache.saveSetting('session_cookie', cookie);
+        }
+        final jwt = _convex.convexJwt;
+        if (jwt != null) {
+          await _cache.saveSetting('convex_jwt', jwt);
         }
         await _cache.saveSetting('current_user_id', user.id);
         await _cache.cacheUserData('currentUser', user.toJson());
@@ -140,6 +151,10 @@ class AuthNotifier extends StateNotifier<AuthState> {
         final cookie = _convex.sessionCookie;
         if (cookie != null) {
           await _cache.saveSetting('session_cookie', cookie);
+        }
+        final jwt = _convex.convexJwt;
+        if (jwt != null) {
+          await _cache.saveSetting('convex_jwt', jwt);
         }
         await _cache.saveSetting('current_user_id', user.id);
         await _cache.cacheUserData('currentUser', user.toJson());
@@ -189,9 +204,84 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (_) {}
 
     await _cache.saveSetting('session_cookie', null);
+    await _cache.saveSetting('convex_jwt', null);
     await _cache.saveSetting('current_user_id', null);
     _convex.setSessionCookie(null);
+    _convex.setConvexJwt(null);
     state = const AuthState();
+  }
+
+  Future<bool> updateProfile({
+    String? name,
+    String? email,
+    String? image,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    try {
+      final args = <String, dynamic>{};
+      if (name != null) args['name'] = name;
+      if (email != null) args['email'] = email;
+      if (image != null) args['image'] = image;
+
+      await _convex.mutation('auth:updateProfile', args);
+
+      if (state.user != null) {
+        final updatedUser = state.user!.copyWith(
+          name: name ?? state.user!.name,
+          email: email ?? state.user!.email,
+          image: image ?? state.user!.image,
+        );
+        await _cache.saveSetting('current_user_id', updatedUser.id);
+        await _cache.cacheUserData('currentUser', updatedUser.toJson());
+        state = AuthState(user: updatedUser);
+      }
+
+      return true;
+    } on ConvexApiException catch (e) {
+      state = state.copyWith(isLoading: false, error: e.message);
+      return false;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Failed to update profile: ${e.toString()}',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+
+    if (!_validatePassword(newPassword)) {
+      state = state.copyWith(
+        isLoading: false,
+        error:
+            'New password must be at least 8 characters with 1 special character',
+      );
+      return false;
+    }
+
+    try {
+      await _convex.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      state = state.copyWith(isLoading: false);
+      return true;
+    } on ConvexApiException catch (e) {
+      state = state.copyWith(isLoading: false, error: e.message);
+      return false;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Failed to change password: ${e.toString()}',
+      );
+      return false;
+    }
   }
 
   bool _validatePassword(String password) {

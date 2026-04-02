@@ -1,2 +1,2 @@
 export 'balance_card.dart';
-export 'expense_list_item.dart';
+export 'transaction_list_item.dart';

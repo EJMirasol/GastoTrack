@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'expense_repository.dart';
+import 'transaction_repository.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../core/services/local_cache_service.dart';
 import '../../../core/services/convex_service.dart';
@@ -156,6 +156,7 @@ class BudgetNotifier extends StateNotifier<List<Budget>> {
         });
         final convexId = result['value'] as String?;
         if (convexId != null) {
+          await _cache.deleteBudget(localId);
           final updatedBudget = budget.copyWith(
             id: convexId,
             convexId: convexId,

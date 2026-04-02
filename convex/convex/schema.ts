@@ -10,7 +10,7 @@ export default defineSchema({
     userId: v.optional(v.string()),
   }),
 
-  expenses: defineTable({
+  transactions: defineTable({
     amount: v.number(),
     categoryId: v.string(),
     userId: v.string(),
