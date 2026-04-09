@@ -1,33 +1,29 @@
 import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class LocalCacheService {
   static const String transactionsBoxName = 'transactions';
-  static const String pendingBoxName = 'pending_mutations';
   static const String userDataBoxName = 'user_data';
   static const String settingsBoxName = 'settings';
-  static const String groupsBoxName = 'groups';
   static const String budgetsBoxName = 'budgets';
+  static const String categoriesBoxName = 'categories';
 
   late final Box<Map> _transactionsBox;
-  late final Box<Map> _pendingBox;
   late final Box<String> _userDataBox;
   late final Box<dynamic> _settingsBox;
-  late final Box<Map> _groupsBox;
   late final Box<Map> _budgetsBox;
+  late final Box<Map> _categoriesBox;
 
   Future<void> initialize() async {
     await Hive.initFlutter();
 
     _transactionsBox = await Hive.openBox<Map>(transactionsBoxName);
-    _pendingBox = await Hive.openBox<Map>(pendingBoxName);
     _userDataBox = await Hive.openBox<String>(userDataBoxName);
     _settingsBox = await Hive.openBox(settingsBoxName);
-    _groupsBox = await Hive.openBox<Map>(groupsBoxName);
     _budgetsBox = await Hive.openBox<Map>(budgetsBoxName);
+    _categoriesBox = await Hive.openBox<Map>(categoriesBoxName);
   }
-
-  // === Transaction Operations ===
 
   Future<void> saveTransaction(Map<String, dynamic> transaction) async {
     final id = transaction['id'] as String;
@@ -54,52 +50,18 @@ class LocalCacheService {
     await _transactionsBox.delete(id);
   }
 
-  // === Pending Mutation Queue ===
-
-  Future<void> addToSyncQueue(Map<String, dynamic> mutation) async {
-    final id = mutation['id'] as String;
-    await _pendingBox.put(id, {
-      ...mutation,
-      'createdAt': DateTime.now().toIso8601String(),
-      'retryCount': 0,
-    });
+  Future<void> clearTransactions() async {
+    await _transactionsBox.clear();
   }
 
-  List<Map<String, dynamic>> getPendingMutations() {
-    return _pendingBox.values.map((e) => Map<String, dynamic>.from(e)).toList();
-  }
+  Box<Map> get transactionsBox => _transactionsBox;
 
-  Future<void> removePendingMutation(String id) async {
-    await _pendingBox.delete(id);
-  }
-
-  Future<void> updateMutationRetry(
-    String id,
-    int retryCount,
-    String? error,
-  ) async {
-    final mutation = _pendingBox.get(id);
-    if (mutation != null) {
-      await _pendingBox.put(id, {
-        ...Map<String, dynamic>.from(mutation),
-        'retryCount': retryCount,
-        'lastError': error,
-      });
-    }
-  }
-
-  // === User Data Cache ===
+  Box<String> get userDataBox => _userDataBox;
 
   Future<void> cacheUserData(String key, Map<String, dynamic> data) async {
     await _userDataBox.put(
       key,
-      jsonEncode({
-        'data': data,
-        'cachedAt': DateTime.now().toIso8601String(),
-        'expiresAt': DateTime.now()
-            .add(const Duration(days: 30))
-            .toIso8601String(),
-      }),
+      jsonEncode({'data': data, 'cachedAt': DateTime.now().toIso8601String()}),
     );
   }
 
@@ -109,20 +71,11 @@ class LocalCacheService {
 
     try {
       final wrapper = jsonDecode(value) as Map<String, dynamic>;
-      final expiresAt = DateTime.parse(wrapper['expiresAt'] as String);
-
-      if (DateTime.now().isAfter(expiresAt)) {
-        _userDataBox.delete(key);
-        return null;
-      }
-
       return wrapper['data'] as Map<String, dynamic>;
     } catch (e) {
       return null;
     }
   }
-
-  // === Settings ===
 
   Future<void> saveSetting(String key, dynamic value) async {
     await _settingsBox.put(key, value);
@@ -132,38 +85,7 @@ class LocalCacheService {
     return _settingsBox.get(key) as T?;
   }
 
-  // === Group Operations ===
-
-  Future<void> saveGroup(Map<String, dynamic> group) async {
-    final id = group['id'] as String;
-    await _groupsBox.put(id, {
-      ...group,
-      'cachedAt': DateTime.now().toIso8601String(),
-    });
-  }
-
-  Map<String, dynamic>? getGroup(String id) {
-    final data = _groupsBox.get(id);
-    if (data == null) return null;
-    return Map<String, dynamic>.from(data);
-  }
-
-  List<Map<String, dynamic>> getAllGroups() {
-    return _groupsBox.values.map((g) => Map<String, dynamic>.from(g)).toList();
-  }
-
-  List<Map<String, dynamic>> getGroupsForUser(String userId) {
-    return _groupsBox.values
-        .where((g) => (g['members'] as List?)?.contains(userId) ?? false)
-        .map((g) => Map<String, dynamic>.from(g))
-        .toList();
-  }
-
-  Future<void> deleteGroup(String id) async {
-    await _groupsBox.delete(id);
-  }
-
-  // === Budget Operations ===
+  Box<dynamic> get settingsBox => _settingsBox;
 
   Future<void> saveBudget(Map<String, dynamic> budget) async {
     final id = budget['id'] as String;
@@ -187,34 +109,48 @@ class LocalCacheService {
     await _budgetsBox.delete(id);
   }
 
-  // === Data Expiration ===
+  Future<void> clearBudgets() async {
+    await _budgetsBox.clear();
+  }
 
-  Future<void> cleanupExpiredData() async {
-    final now = DateTime.now();
-    final expirationDays = 30;
+  Box<Map> get budgetsBox => _budgetsBox;
 
-    for (final box in [_transactionsBox, _groupsBox, _budgetsBox]) {
-      final keysToDelete = <dynamic>[];
+  Future<void> saveCategory(Map<String, dynamic> category) async {
+    final id = category['id'] as String;
+    await _categoriesBox.put(id, category);
+  }
 
-      for (final key in box.keys) {
-        final record = box.get(key);
-        if (record != null) {
-          final cachedAtStr = record['cachedAt'] as String?;
-          if (cachedAtStr != null) {
-            final cachedAt = DateTime.tryParse(cachedAtStr);
-            if (cachedAt != null) {
-              final expiresAt = cachedAt.add(Duration(days: expirationDays));
-              if (now.isAfter(expiresAt)) {
-                keysToDelete.add(key);
-              }
-            }
-          }
-        }
-      }
+  void deleteCategory(String id) {
+    _categoriesBox.delete(id);
+  }
 
-      for (final key in keysToDelete) {
-        await box.delete(key);
-      }
-    }
+  List<Map<String, dynamic>> getAllCategories() {
+    return _categoriesBox.values
+        .map((c) => Map<String, dynamic>.from(c))
+        .toList();
+  }
+
+  Future<void> clearCategories() async {
+    await _categoriesBox.clear();
+  }
+
+  Box<Map> get categoriesBox => _categoriesBox;
+
+  Future<void> savePendingTransferIds(List<String> ids) async {
+    await _settingsBox.put('pending_transfer_ids', ids);
+  }
+
+  List<String> getPendingTransferIds() {
+    final raw = _settingsBox.get('pending_transfer_ids');
+    if (raw == null) return [];
+    return (raw as List).cast<String>();
+  }
+
+  Future<void> clearPendingTransferIds() async {
+    await _settingsBox.delete('pending_transfer_ids');
   }
 }
+
+final localCacheServiceProvider = Provider<LocalCacheService>((ref) {
+  throw UnimplementedError('localCacheServiceProvider must be overridden');
+});

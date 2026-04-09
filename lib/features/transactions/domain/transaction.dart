@@ -1,5 +1,7 @@
 enum TransactionType { expense, income }
 
+enum PaymentMethod { cash, ewallet, bank }
+
 class Transaction {
   final String id;
   final double amount;
@@ -9,8 +11,10 @@ class Transaction {
   final String? description;
   final DateTime date;
   final TransactionType type;
+  final PaymentMethod paymentMethod;
   final bool isRecurring;
   final String? recurringRuleId;
+  final bool isTransfer;
   final DateTime createdAt;
 
   const Transaction({
@@ -22,8 +26,10 @@ class Transaction {
     this.description,
     required this.date,
     this.type = TransactionType.expense,
+    this.paymentMethod = PaymentMethod.cash,
     this.isRecurring = false,
     this.recurringRuleId,
+    this.isTransfer = false,
     required this.createdAt,
   });
 
@@ -36,8 +42,10 @@ class Transaction {
     String? description,
     DateTime? date,
     TransactionType? type,
+    PaymentMethod? paymentMethod,
     bool? isRecurring,
     String? recurringRuleId,
+    bool? isTransfer,
     DateTime? createdAt,
   }) {
     return Transaction(
@@ -49,8 +57,10 @@ class Transaction {
       description: description ?? this.description,
       date: date ?? this.date,
       type: type ?? this.type,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
       isRecurring: isRecurring ?? this.isRecurring,
       recurringRuleId: recurringRuleId ?? this.recurringRuleId,
+      isTransfer: isTransfer ?? this.isTransfer,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -64,8 +74,10 @@ class Transaction {
     'description': description,
     'date': date.millisecondsSinceEpoch,
     'type': type.name,
+    'paymentMethod': paymentMethod.name,
     'isRecurring': isRecurring,
     'recurringRuleId': recurringRuleId,
+    'isTransfer': isTransfer,
     'createdAt': createdAt.millisecondsSinceEpoch,
   };
 
@@ -76,13 +88,21 @@ class Transaction {
     userId: json['userId'] as String,
     groupId: json['groupId'] as String?,
     description: json['description'] as String?,
-    date: DateTime.fromMillisecondsSinceEpoch(json['date'] as int),
+    date: DateTime.fromMillisecondsSinceEpoch((json['date'] as num).toInt()),
     type: json['type'] == 'income'
         ? TransactionType.income
         : TransactionType.expense,
+    paymentMethod: json['paymentMethod'] == 'ewallet'
+        ? PaymentMethod.ewallet
+        : json['paymentMethod'] == 'bank'
+        ? PaymentMethod.bank
+        : PaymentMethod.cash,
     isRecurring: json['isRecurring'] as bool? ?? false,
     recurringRuleId: json['recurringRuleId'] as String?,
-    createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+    isTransfer: json['isTransfer'] as bool? ?? false,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(
+      (json['createdAt'] as num).toInt(),
+    ),
   );
 
   @override

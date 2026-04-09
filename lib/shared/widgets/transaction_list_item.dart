@@ -5,6 +5,8 @@ import '../../features/transactions/domain/category.dart';
 import '../../features/transactions/data/transaction_repository.dart';
 import '../../core/constants/constants.dart';
 import '../../core/services/currency_service.dart';
+import '../utils/category_utils.dart';
+import '../utils/payment_utils.dart';
 
 class TransactionListItem extends ConsumerWidget {
   const TransactionListItem({
@@ -43,22 +45,43 @@ class TransactionListItem extends ConsumerWidget {
         height: 48,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppSizes.borderRadius),
         ),
-        child: Icon(_getIconData(category.icon), color: color),
+        child: Icon(getCategoryIconData(category.icon), color: color),
       ),
       title: Text(
         category.name,
         style: Theme.of(context).textTheme.titleMedium,
       ),
-      subtitle: expense.description != null
-          ? Text(
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (expense.description != null)
+            Text(
               expense.description!,
               style: Theme.of(context).textTheme.bodySmall,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-            )
-          : null,
+            ),
+          const SizedBox(height: AppSizes.xxs),
+          Row(
+            children: [
+              Icon(
+                getPaymentMethodIcon(expense.paymentMethod),
+                size: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: AppSizes.xs),
+              Text(
+                getPaymentMethodLabel(expense.paymentMethod),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
       trailing: Text(
         '${isExpense ? "-" : "+"}${formatCurrency(expense.amount, currency)}',
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -67,20 +90,5 @@ class TransactionListItem extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  IconData _getIconData(String iconName) {
-    return switch (iconName) {
-      'restaurant' => Icons.restaurant,
-      'directions_car' => Icons.directions_car,
-      'shopping_bag' => Icons.shopping_bag,
-      'movie' => Icons.movie,
-      'receipt' => Icons.receipt,
-      'local_hospital' => Icons.local_hospital,
-      'school' => Icons.school,
-      'home' => Icons.home,
-      'account_balance_wallet' => Icons.account_balance_wallet,
-      _ => Icons.more_horiz,
-    };
   }
 }

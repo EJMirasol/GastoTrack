@@ -7,6 +7,7 @@ import '../../transactions/domain/category.dart';
 import '../../transactions/domain/transaction.dart';
 import '../../../core/constants/constants.dart';
 import '../../../core/services/currency_service.dart';
+import '../../../shared/utils/category_utils.dart';
 
 class AnalyticsPage extends ConsumerWidget {
   const AnalyticsPage({super.key});
@@ -20,7 +21,7 @@ class AnalyticsPage extends ConsumerWidget {
     final selectedMonth = ref.watch(selectedMonthProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Analytics')),
+      appBar: AppBar(title: const Text(AppStrings.analytics)),
       body: expenses.isEmpty
           ? const _EmptyAnalytics()
           : ListView(
@@ -34,10 +35,8 @@ class AnalyticsPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSizes.lg),
                 Text(
-                  'Spending by Category',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  AppStrings.spendingByCategory,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSizes.md),
                 _PieChartCard(
@@ -47,10 +46,8 @@ class AnalyticsPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSizes.lg),
                 Text(
-                  'Daily Spending',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  AppStrings.dailySpending,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSizes.md),
                 _BarChartCard(
@@ -60,10 +57,8 @@ class AnalyticsPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSizes.lg),
                 Text(
-                  'Category Breakdown',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  AppStrings.categoryBreakdown,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSizes.md),
                 _CategoryBreakdown(
@@ -89,17 +84,17 @@ class _EmptyAnalytics extends StatelessWidget {
         children: [
           Icon(
             Icons.pie_chart_outline,
-            size: 80,
+            size: AppSizes.emptyIconSize,
             color: Theme.of(context).colorScheme.outline,
           ),
           const SizedBox(height: AppSizes.md),
           Text(
-            'No data to analyze',
+            AppStrings.noAnalyticsData,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: AppSizes.xs),
           Text(
-            'Add some expenses to see analytics',
+            AppStrings.noAnalyticsDataDesc,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -143,7 +138,7 @@ class _SummaryCard extends StatelessWidget {
               children: [
                 _buildStat(
                   context,
-                  label: 'Spent',
+                  label: AppStrings.spent,
                   value: totalExpenses,
                   color: AppColors.expense,
                 ),
@@ -154,7 +149,7 @@ class _SummaryCard extends StatelessWidget {
                 ),
                 _buildStat(
                   context,
-                  label: 'Income',
+                  label: AppStrings.income,
                   value: totalIncome,
                   color: AppColors.income,
                 ),
@@ -211,7 +206,7 @@ class _PieChartCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppSizes.xl),
           child: Center(
             child: Text(
-              'No expense data',
+              AppStrings.noExpenseData,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -225,7 +220,7 @@ class _PieChartCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(AppSizes.md),
         child: SizedBox(
-          height: 200,
+          height: AppSizes.chartHeight,
           child: PieChart(
             PieChartData(
               sectionsSpace: 2,
@@ -251,7 +246,7 @@ class _PieChartCard extends StatelessWidget {
       );
 
       final percentage = (entry.value / totalExpenses) * 100;
-      final color = _parseColor(category.color);
+      final color = parseCategoryColor(category.color);
 
       return PieChartSectionData(
         value: entry.value,
@@ -265,14 +260,6 @@ class _PieChartCard extends StatelessWidget {
         ),
       );
     }).toList();
-  }
-
-  Color _parseColor(String hexColor) {
-    try {
-      return Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
-    } catch (_) {
-      return AppColors.primary;
-    }
   }
 }
 
@@ -295,7 +282,7 @@ class _BarChartCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(AppSizes.md),
         child: SizedBox(
-          height: 200,
+          height: AppSizes.chartHeight,
           child: BarChart(
             BarChartData(
               alignment: BarChartAlignment.spaceAround,
@@ -444,32 +431,9 @@ class _CategoryItem extends StatelessWidget {
   final double percentage;
   final Currency currency;
 
-  Color _parseColor(String hexColor) {
-    try {
-      return Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
-    } catch (_) {
-      return AppColors.primary;
-    }
-  }
-
-  IconData _getIconData(String iconName) {
-    return switch (iconName) {
-      'restaurant' => Icons.restaurant,
-      'directions_car' => Icons.directions_car,
-      'shopping_bag' => Icons.shopping_bag,
-      'movie' => Icons.movie,
-      'receipt' => Icons.receipt,
-      'local_hospital' => Icons.local_hospital,
-      'school' => Icons.school,
-      'home' => Icons.home,
-      'account_balance_wallet' => Icons.account_balance_wallet,
-      _ => Icons.more_horiz,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
-    final color = _parseColor(category.color);
+    final color = parseCategoryColor(category.color);
 
     return ListTile(
       leading: Container(
@@ -477,9 +441,9 @@ class _CategoryItem extends StatelessWidget {
         height: 40,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppSizes.borderRadiusSm),
         ),
-        child: Icon(_getIconData(category.icon), color: color, size: 20),
+        child: Icon(getCategoryIconData(category.icon), color: color, size: 20),
       ),
       title: Text(category.name),
       trailing: Row(

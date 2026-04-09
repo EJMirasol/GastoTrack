@@ -5,6 +5,8 @@ class Category {
   final String color;
   final bool isDefault;
   final String? userId;
+  final int order;
+  final String categoryType;
 
   const Category({
     required this.id,
@@ -13,6 +15,8 @@ class Category {
     required this.color,
     this.isDefault = true,
     this.userId,
+    this.order = 0,
+    this.categoryType = 'expense',
   });
 
   Category copyWith({
@@ -22,6 +26,8 @@ class Category {
     String? color,
     bool? isDefault,
     String? userId,
+    int? order,
+    String? categoryType,
   }) {
     return Category(
       id: id ?? this.id,
@@ -30,6 +36,8 @@ class Category {
       color: color ?? this.color,
       isDefault: isDefault ?? this.isDefault,
       userId: userId ?? this.userId,
+      order: order ?? this.order,
+      categoryType: categoryType ?? this.categoryType,
     );
   }
 
@@ -40,6 +48,8 @@ class Category {
     'color': color,
     'isDefault': isDefault,
     'userId': userId,
+    'order': order,
+    'categoryType': categoryType,
   };
 
   factory Category.fromJson(Map<String, dynamic> json) => Category(
@@ -49,6 +59,8 @@ class Category {
     color: json['color'] as String,
     isDefault: json['isDefault'] as bool? ?? true,
     userId: json['userId'] as String?,
+    order: (json['order'] as num?)?.toInt() ?? 0,
+    categoryType: json['categoryType'] as String? ?? 'expense',
   );
 
   @override

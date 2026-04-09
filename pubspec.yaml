@@ -1,5 +1,5 @@
 name: gastotrack
-description: "Track personal and group expenses with real-time sync"
+description: "Track personal expenses offline with local PIN authentication"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -15,13 +15,11 @@ dependencies:
   fl_chart: ^0.70.2
   intl: ^0.20.2
   uuid: ^4.5.1
-  convex_flutter: ^1.2.0
   flutter_local_notifications: ^18.0.1
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  connectivity_plus: ^6.0.3
-  http: ^1.2.0
   file_picker: ^8.1.7
+  google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,3 @@
-import 'dart:convert';
-import 'package:flutter/material.dart';
-
 enum SubscriptionStatus { free, pro }
 
 class User {
@@ -13,7 +10,7 @@ class User {
 
   const User({
     required this.id,
-    required this.email,
+    this.email = '',
     this.name,
     this.image,
     this.subscriptionStatus = SubscriptionStatus.free,
@@ -49,13 +46,15 @@ class User {
 
   factory User.fromJson(Map<String, dynamic> json) => User(
     id: json['id'] as String,
-    email: json['email'] as String,
+    email: (json['email'] as String?) ?? '',
     name: json['name'] as String?,
     image: json['image'] as String?,
     subscriptionStatus: json['subscriptionStatus'] == 'pro'
         ? SubscriptionStatus.pro
         : SubscriptionStatus.free,
-    createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int),
+    createdAt: DateTime.fromMillisecondsSinceEpoch(
+      (json['createdAt'] as num).toInt(),
+    ),
   );
 
   @override
@@ -63,20 +62,9 @@ class User {
       identical(this, other) ||
       other is User &&
           id == other.id &&
-          email == other.email &&
           name == other.name &&
-          image == other.image &&
-          subscriptionStatus == other.subscriptionStatus;
+          image == other.image;
 
   @override
-  int get hashCode => Object.hash(id, email, name, image, subscriptionStatus);
-
-  ImageProvider<Object>? get imageProvider {
-    if (image == null) return null;
-    if (image!.startsWith('data:')) {
-      final bytes = base64Decode(image!.split(',').last);
-      return MemoryImage(bytes);
-    }
-    return NetworkImage(image!);
-  }
+  int get hashCode => Object.hash(id, name, image);
 }

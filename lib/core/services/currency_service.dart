@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'local_cache_service.dart';
-import '../../features/auth/data/auth_repository.dart';
 
 class Currency {
   final String code;

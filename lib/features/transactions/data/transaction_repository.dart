@@ -3,10 +3,48 @@ import 'package:uuid/uuid.dart';
 import '../domain/transaction.dart';
 import '../domain/category.dart';
 import '../../../core/services/local_cache_service.dart';
-import '../../../core/services/convex_service.dart';
-import '../../auth/data/auth_repository.dart';
 
 final _uuid = Uuid();
+
+enum SortOption { newestFirst, oldestFirst, amountHighLow, amountLowHigh }
+
+class TransactionFilter {
+  final TransactionType? type;
+  final Set<String> categoryIds;
+  final PaymentMethod? paymentMethod;
+  final SortOption sort;
+
+  const TransactionFilter({
+    this.type,
+    this.categoryIds = const {},
+    this.paymentMethod,
+    this.sort = SortOption.newestFirst,
+  });
+
+  TransactionFilter copyWith({
+    TransactionType? type,
+    bool clearType = false,
+    Set<String>? categoryIds,
+    PaymentMethod? paymentMethod,
+    bool clearPaymentMethod = false,
+    SortOption? sort,
+  }) {
+    return TransactionFilter(
+      type: clearType ? null : (type ?? this.type),
+      categoryIds: categoryIds ?? this.categoryIds,
+      paymentMethod: clearPaymentMethod
+          ? null
+          : (paymentMethod ?? this.paymentMethod),
+      sort: sort ?? this.sort,
+    );
+  }
+
+  bool get hasActiveFilters =>
+      type != null ||
+      categoryIds.isNotEmpty ||
+      paymentMethod != null ||
+      sort != SortOption.newestFirst;
+}
 
 final defaultCategories = [
   const Category(
@@ -15,6 +53,8 @@ final defaultCategories = [
     icon: 'restaurant',
     color: '#FF6B6B',
     isDefault: true,
+    order: 0,
+    categoryType: 'expense',
   ),
   const Category(
     id: '2',
@@ -22,6 +62,8 @@ final defaultCategories = [
     icon: 'directions_car',
     color: '#4ECDC4',
     isDefault: true,
+    order: 1,
+    categoryType: 'expense',
   ),
   const Category(
     id: '3',
@@ -29,6 +71,8 @@ final defaultCategories = [
     icon: 'shopping_bag',
     color: '#45B7D1',
     isDefault: true,
+    order: 2,
+    categoryType: 'expense',
   ),
   const Category(
     id: '4',
@@ -36,6 +80,8 @@ final defaultCategories = [
     icon: 'movie',
     color: '#96CEB4',
     isDefault: true,
+    order: 3,
+    categoryType: 'expense',
   ),
   const Category(
     id: '5',
@@ -43,6 +89,8 @@ final defaultCategories = [
     icon: 'receipt',
     color: '#FECEA8',
     isDefault: true,
+    order: 4,
+    categoryType: 'expense',
   ),
   const Category(
     id: '6',
@@ -50,6 +98,8 @@ final defaultCategories = [
     icon: 'local_hospital',
     color: '#FF6F91',
     isDefault: true,
+    order: 5,
+    categoryType: 'expense',
   ),
   const Category(
     id: '7',
@@ -57,6 +107,8 @@ final defaultCategories = [
     icon: 'school',
     color: '#845EC2',
     isDefault: true,
+    order: 6,
+    categoryType: 'expense',
   ),
   const Category(
     id: '8',
@@ -64,6 +116,8 @@ final defaultCategories = [
     icon: 'home',
     color: '#D65DB1',
     isDefault: true,
+    order: 7,
+    categoryType: 'expense',
   ),
   const Category(
     id: '9',
@@ -71,6 +125,8 @@ final defaultCategories = [
     icon: 'account_balance_wallet',
     color: '#4CAF50',
     isDefault: true,
+    order: 8,
+    categoryType: 'income',
   ),
   const Category(
     id: '10',
@@ -78,59 +134,116 @@ final defaultCategories = [
     icon: 'more_horiz',
     color: '#FFC75F',
     isDefault: true,
+    order: 9,
+    categoryType: 'both',
+  ),
+  const Category(
+    id: '11',
+    name: 'Transfer Fee',
+    icon: 'swap_horiz',
+    color: '#FF8A65',
+    isDefault: true,
+    order: 10,
+    categoryType: 'both',
   ),
 ];
 
-final categoriesProvider = Provider<List<Category>>((ref) {
-  return defaultCategories;
-});
+class CategoryNotifier extends StateNotifier<List<Category>> {
+  final LocalCacheService _cache;
+
+  CategoryNotifier(this._cache) : super([]) {
+    _load();
+  }
+
+  void _load() {
+    final cached = _cache.getAllCategories();
+    if (cached.isEmpty) {
+      for (final c in defaultCategories) {
+        _cache.saveCategory(c.toJson());
+      }
+      state = List.from(defaultCategories);
+    } else {
+      state = cached.map((c) => Category.fromJson(c)).toList()
+        ..sort((a, b) => a.order.compareTo(b.order));
+    }
+  }
+
+  Future<void> addCategory(Category category) async {
+    await _cache.saveCategory(category.toJson());
+    state = [...state, category]..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  Future<void> updateCategory(Category category) async {
+    await _cache.saveCategory(category.toJson());
+    state = state.map((c) => c.id == category.id ? category : c).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  Future<void> deleteCategory(String id) async {
+    _cache.deleteCategory(id);
+    state = state.where((c) => c.id != id).toList();
+  }
+
+  Future<void> reorderCategories(int oldIndex, int newIndex) async {
+    if (oldIndex < newIndex) newIndex -= 1;
+    final items = List<Category>.from(state);
+    final item = items.removeAt(oldIndex);
+    items.insert(newIndex, item);
+    final reordered = items.asMap().entries.map((e) {
+      return e.value.copyWith(order: e.key);
+    }).toList();
+    state = reordered;
+    for (final c in reordered) {
+      await _cache.saveCategory(c.toJson());
+    }
+  }
+
+  Future<void> restoreDefaults() async {
+    await _cache.clearCategories();
+    for (final c in defaultCategories) {
+      await _cache.saveCategory(c.toJson());
+    }
+    state = List.from(defaultCategories);
+  }
+}
+
+final categoriesProvider =
+    StateNotifierProvider<CategoryNotifier, List<Category>>((ref) {
+      final cache = ref.watch(localCacheServiceProvider);
+      return CategoryNotifier(cache);
+    });
 
 class TransactionNotifier extends StateNotifier<List<Transaction>> {
   final LocalCacheService _cache;
-  final ConvexService _convex;
 
-  TransactionNotifier(this._cache, this._convex) : super([]);
+  TransactionNotifier(this._cache) : super([]);
 
   Future<void> loadForUser(String userId) async {
+    await _cleanupPendingTransfers();
     final cached = _cache.getAllTransactions(userId);
-    if (cached.isNotEmpty) {
-      state = cached.map((e) => Transaction.fromJson(e)).toList();
-    }
-
-    try {
-      final result = await _convex.query('transactions:getByUser', {
-        'userId': userId,
-      });
-      final remote = result['value'] as List<dynamic>? ?? [];
-
-      final transactions = remote.map((e) {
-        final map = e as Map<String, dynamic>;
-        return Transaction(
-          id: map['_id'] as String,
-          amount: (map['amount'] as num).toDouble(),
-          categoryId: map['categoryId'] as String,
-          userId: map['userId'] as String,
-          groupId: map['groupId'] as String?,
-          description: map['description'] as String?,
-          date: DateTime.fromMillisecondsSinceEpoch(map['date'] as int),
-          type: map['type'] == 'income'
-              ? TransactionType.income
-              : TransactionType.expense,
-          isRecurring: map['isRecurring'] as bool? ?? false,
-          createdAt: DateTime.fromMillisecondsSinceEpoch(
-            map['createdAt'] as int,
-          ),
-        );
-      }).toList();
-
-      for (final t in transactions) {
-        await _cache.saveTransaction(t.toJson());
-      }
-      state = transactions;
-    } catch (_) {}
+    state = cached.map((e) => Transaction.fromJson(e)).toList();
   }
 
-  Future<bool> addTransaction({
+  Future<void> _cleanupPendingTransfers() async {
+    final pendingIds = _cache.getPendingTransferIds();
+    if (pendingIds.isEmpty) return;
+    for (final id in pendingIds) {
+      try {
+        await _cache.deleteTransaction(id);
+      } catch (_) {}
+    }
+    await _cache.clearPendingTransferIds();
+  }
+
+  Future<void> savePendingTransferIds(List<String> ids) async {
+    await _cache.savePendingTransferIds(ids);
+  }
+
+  Future<void> clearPendingTransferIds() async {
+    await _cache.clearPendingTransferIds();
+  }
+
+  Future<String> addTransaction({
     required double amount,
     required String categoryId,
     required String userId,
@@ -138,6 +251,8 @@ class TransactionNotifier extends StateNotifier<List<Transaction>> {
     String? description,
     required DateTime date,
     TransactionType type = TransactionType.expense,
+    PaymentMethod paymentMethod = PaymentMethod.cash,
+    bool isTransfer = false,
   }) async {
     final localId = _uuid.v4();
     final transaction = Transaction(
@@ -149,90 +264,23 @@ class TransactionNotifier extends StateNotifier<List<Transaction>> {
       description: description,
       date: date,
       type: type,
+      paymentMethod: paymentMethod,
+      isTransfer: isTransfer,
       createdAt: DateTime.now(),
     );
     await _cache.saveTransaction(transaction.toJson());
     state = [...state, transaction];
-
-    try {
-      final args = <String, dynamic>{
-        'amount': amount,
-        'categoryId': categoryId,
-        'date': date.millisecondsSinceEpoch,
-        'type': type.name,
-      };
-      if (groupId != null) args['groupId'] = groupId;
-      if (description != null) args['description'] = description;
-      final result = await _convex.mutation('transactions:create', args);
-      final convexId = result['value'] as String?;
-      if (convexId != null) {
-        await _cache.deleteTransaction(localId);
-        final synced = transaction.copyWith(id: convexId);
-        await _cache.saveTransaction({
-          ...synced.toJson(),
-          'convexId': convexId,
-          'syncStatus': 'synced',
-        });
-        state = state.map((e) => e.id == localId ? synced : e).toList();
-      }
-      return true;
-    } catch (_) {
-      await _cache.addToSyncQueue({
-        'id': localId,
-        'type': 'create',
-        'collection': 'transactions',
-        'recordId': localId,
-        'payload': {
-          'amount': amount,
-          'categoryId': categoryId,
-          'groupId': groupId,
-          'description': description,
-          'date': date.millisecondsSinceEpoch,
-          'type': type.name,
-        },
-      });
-      return false;
-    }
+    return localId;
   }
 
   Future<void> removeTransaction(String id) async {
     await _cache.deleteTransaction(id);
     state = state.where((e) => e.id != id).toList();
-
-    try {
-      await _convex.mutation('transactions:remove', {'id': id});
-    } catch (_) {
-      await _cache.addToSyncQueue({
-        'id': '${id}_delete',
-        'type': 'delete',
-        'collection': 'transactions',
-        'recordId': id,
-        'payload': {},
-      });
-    }
   }
 
   Future<void> updateTransaction(Transaction updated) async {
     await _cache.saveTransaction(updated.toJson());
     state = state.map((e) => e.id == updated.id ? updated : e).toList();
-
-    try {
-      await _convex.mutation('transactions:update', {
-        'id': updated.id,
-        'amount': updated.amount,
-        'description': updated.description,
-        'date': updated.date.millisecondsSinceEpoch,
-        'categoryId': updated.categoryId,
-      });
-    } catch (_) {
-      await _cache.addToSyncQueue({
-        'id': '${updated.id}_update',
-        'type': 'update',
-        'collection': 'transactions',
-        'recordId': updated.id,
-        'payload': updated.toJson(),
-      });
-    }
   }
 
   List<Transaction> getTransactionsForMonth(DateTime month) {
@@ -257,8 +305,7 @@ class TransactionNotifier extends StateNotifier<List<Transaction>> {
 final transactionsProvider =
     StateNotifierProvider<TransactionNotifier, List<Transaction>>((ref) {
       final cache = ref.watch(localCacheServiceProvider);
-      final convex = ref.watch(convexServiceProvider);
-      return TransactionNotifier(cache, convex);
+      return TransactionNotifier(cache);
     });
 
 final selectedMonthProvider = StateProvider<DateTime>((ref) {
@@ -273,17 +320,53 @@ final monthlyTransactionsProvider = Provider<List<Transaction>>((ref) {
   }).toList();
 });
 
+final transactionFilterProvider = StateProvider<TransactionFilter>((ref) {
+  return const TransactionFilter();
+});
+
+final filteredTransactionsProvider = Provider<List<Transaction>>((ref) {
+  final transactions = ref.watch(monthlyTransactionsProvider);
+  final filter = ref.watch(transactionFilterProvider);
+
+  var filtered = transactions.where((e) => !e.isTransfer);
+
+  if (filter.type != null) {
+    filtered = filtered.where((e) => e.type == filter.type);
+  }
+  if (filter.categoryIds.isNotEmpty) {
+    filtered = filtered.where((e) => filter.categoryIds.contains(e.categoryId));
+  }
+  if (filter.paymentMethod != null) {
+    filtered = filtered.where((e) => e.paymentMethod == filter.paymentMethod);
+  }
+
+  final result = filtered.toList();
+
+  switch (filter.sort) {
+    case SortOption.newestFirst:
+      result.sort((a, b) => b.date.compareTo(a.date));
+    case SortOption.oldestFirst:
+      result.sort((a, b) => a.date.compareTo(b.date));
+    case SortOption.amountHighLow:
+      result.sort((a, b) => b.amount.compareTo(a.amount));
+    case SortOption.amountLowHigh:
+      result.sort((a, b) => a.amount.compareTo(b.amount));
+  }
+
+  return result;
+});
+
 final totalExpensesForMonthProvider = Provider<double>((ref) {
   final transactions = ref.watch(monthlyTransactionsProvider);
   return transactions
-      .where((e) => e.type == TransactionType.expense)
+      .where((e) => e.type == TransactionType.expense && !e.isTransfer)
       .fold(0.0, (sum, e) => sum + e.amount);
 });
 
 final totalIncomeForMonthProvider = Provider<double>((ref) {
   final transactions = ref.watch(monthlyTransactionsProvider);
   return transactions
-      .where((e) => e.type == TransactionType.income)
+      .where((e) => e.type == TransactionType.income && !e.isTransfer)
       .fold(0.0, (sum, e) => sum + e.amount);
 });
 
@@ -291,9 +374,71 @@ final transactionsByCategoryProvider = Provider<Map<String, double>>((ref) {
   final transactions = ref.watch(monthlyTransactionsProvider);
   final byCategory = <String, double>{};
   for (final e in transactions.where(
-    (e) => e.type == TransactionType.expense,
+    (e) => e.type == TransactionType.expense && !e.isTransfer,
   )) {
     byCategory[e.categoryId] = (byCategory[e.categoryId] ?? 0) + e.amount;
   }
   return byCategory;
+});
+
+final cashBalanceProvider = Provider<double>((ref) {
+  final transactions = ref.watch(monthlyTransactionsProvider);
+  return transactions.where((e) => e.paymentMethod == PaymentMethod.cash).fold(
+    0.0,
+    (sum, e) {
+      return e.type == TransactionType.income ? sum + e.amount : sum - e.amount;
+    },
+  );
+});
+
+final ewalletBalanceProvider = Provider<double>((ref) {
+  final transactions = ref.watch(monthlyTransactionsProvider);
+  return transactions
+      .where((e) => e.paymentMethod == PaymentMethod.ewallet)
+      .fold(0.0, (sum, e) {
+        return e.type == TransactionType.income
+            ? sum + e.amount
+            : sum - e.amount;
+      });
+});
+
+final bankBalanceProvider = Provider<double>((ref) {
+  final transactions = ref.watch(monthlyTransactionsProvider);
+  return transactions.where((e) => e.paymentMethod == PaymentMethod.bank).fold(
+    0.0,
+    (sum, e) {
+      return e.type == TransactionType.income ? sum + e.amount : sum - e.amount;
+    },
+  );
+});
+
+final allTimeCashBalanceProvider = Provider<double>((ref) {
+  final transactions = ref.watch(transactionsProvider);
+  return transactions.where((e) => e.paymentMethod == PaymentMethod.cash).fold(
+    0.0,
+    (sum, e) {
+      return e.type == TransactionType.income ? sum + e.amount : sum - e.amount;
+    },
+  );
+});
+
+final allTimeEwalletBalanceProvider = Provider<double>((ref) {
+  final transactions = ref.watch(transactionsProvider);
+  return transactions
+      .where((e) => e.paymentMethod == PaymentMethod.ewallet)
+      .fold(0.0, (sum, e) {
+        return e.type == TransactionType.income
+            ? sum + e.amount
+            : sum - e.amount;
+      });
+});
+
+final allTimeBankBalanceProvider = Provider<double>((ref) {
+  final transactions = ref.watch(transactionsProvider);
+  return transactions.where((e) => e.paymentMethod == PaymentMethod.bank).fold(
+    0.0,
+    (sum, e) {
+      return e.type == TransactionType.income ? sum + e.amount : sum - e.amount;
+    },
+  );
 });

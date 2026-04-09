@@ -11,6 +11,9 @@ class BalanceCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final totalExpenses = ref.watch(totalExpensesForMonthProvider);
     final totalIncome = ref.watch(totalIncomeForMonthProvider);
+    final cashBalance = ref.watch(cashBalanceProvider);
+    final ewalletBalance = ref.watch(ewalletBalanceProvider);
+    final bankBalance = ref.watch(bankBalanceProvider);
     final currency = ref.watch(currencyProvider);
     final balance = totalIncome - totalExpenses;
 
@@ -29,7 +32,7 @@ class BalanceCard extends ConsumerWidget {
             ),
             const SizedBox(height: AppSizes.xs),
             Text(
-              formatCurrency(balance.abs(), currency),
+              formatCurrency(balance, currency),
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: balance >= 0 ? AppColors.success : AppColors.error,
@@ -41,21 +44,32 @@ class BalanceCard extends ConsumerWidget {
                 Expanded(
                   child: _buildSummaryItem(
                     context,
-                    label: AppStrings.income,
-                    amount: totalIncome,
-                    color: AppColors.income,
-                    icon: Icons.arrow_downward,
+                    label: 'Cash',
+                    amount: cashBalance,
+                    color: AppColors.success,
+                    icon: Icons.payments_outlined,
                     currency: currency,
                   ),
                 ),
-                const SizedBox(width: AppSizes.md),
+                const SizedBox(width: AppSizes.sm),
                 Expanded(
                   child: _buildSummaryItem(
                     context,
-                    label: AppStrings.expense,
-                    amount: totalExpenses,
-                    color: AppColors.expense,
-                    icon: Icons.arrow_upward,
+                    label: 'E-Wallet',
+                    amount: ewalletBalance,
+                    color: AppColors.primary,
+                    icon: Icons.phone_android_outlined,
+                    currency: currency,
+                  ),
+                ),
+                const SizedBox(width: AppSizes.sm),
+                Expanded(
+                  child: _buildSummaryItem(
+                    context,
+                    label: 'Bank',
+                    amount: bankBalance,
+                    color: AppColors.income,
+                    icon: Icons.account_balance_outlined,
                     currency: currency,
                   ),
                 ),
@@ -76,39 +90,35 @@ class BalanceCard extends ConsumerWidget {
     required Currency currency,
   }) {
     return Container(
-      padding: const EdgeInsets.all(AppSizes.md),
+      padding: const EdgeInsets.all(AppSizes.sm),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(AppSizes.borderRadius),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(AppSizes.sm),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          const SizedBox(width: AppSizes.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          Row(
+            children: [
+              Icon(icon, size: AppSizes.iconSizeSm, color: color),
+              const SizedBox(width: AppSizes.xs),
+              Expanded(
+                child: Text(
                   label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  formatCurrency(amount, currency),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSizes.xxs),
+          Text(
+            formatCurrency(amount, currency),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: amount < 0 ? AppColors.expense : null,
             ),
           ),
         ],

@@ -7,12 +7,14 @@ import '../domain/transaction.dart';
 import '../data/transaction_repository.dart';
 import '../../../core/constants/constants.dart';
 import '../../../core/services/currency_service.dart';
+import '../../../shared/utils/category_utils.dart';
+import '../../../shared/utils/payment_utils.dart';
 import '../../auth/data/auth_repository.dart';
 
 class AddTransactionPage extends ConsumerStatefulWidget {
-  final String? groupId;
+  final String? transactionId;
 
-  const AddTransactionPage({this.groupId, super.key});
+  const AddTransactionPage({this.transactionId, super.key});
 
   @override
   ConsumerState<AddTransactionPage> createState() => _AddTransactionPageState();
@@ -23,15 +25,41 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   final _amountController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  TransactionType _type = TransactionType.expense;
-  String? _selectedCategoryId;
-  DateTime _selectedDate = DateTime.now();
-  String? _groupId;
+  late TransactionType _type;
+  late PaymentMethod _paymentMethod;
+  late String? _selectedCategoryId;
+  late DateTime _selectedDate;
+  bool _isEdit = false;
+  Transaction? _existingTransaction;
 
   @override
   void initState() {
     super.initState();
-    _groupId = widget.groupId;
+    _type = TransactionType.expense;
+    _paymentMethod = PaymentMethod.cash;
+    _selectedCategoryId = null;
+    _selectedDate = DateTime.now();
+
+    if (widget.transactionId != null) {
+      _isEdit = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final transactions = ref.read(transactionsProvider);
+        final existing = transactions
+            .where((t) => t.id == widget.transactionId)
+            .firstOrNull;
+        if (existing != null && mounted) {
+          setState(() {
+            _existingTransaction = existing;
+            _type = existing.type;
+            _paymentMethod = existing.paymentMethod;
+            _selectedCategoryId = existing.categoryId;
+            _selectedDate = existing.date;
+            _amountController.text = existing.amount.toStringAsFixed(2);
+            _descriptionController.text = existing.description ?? '';
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -41,24 +69,41 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     super.dispose();
   }
 
+  bool get _isTransfer =>
+      _existingTransaction != null && _existingTransaction!.isTransfer;
+
   @override
   Widget build(BuildContext context) {
+    if (_isEdit && _existingTransaction == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_isTransfer) {
+      return _buildTransferDetailView(context);
+    }
+
     final categories = ref.watch(categoriesProvider);
+    final title = _isEdit
+        ? (_type == TransactionType.expense
+              ? AppStrings.editExpense
+              : AppStrings.editIncome)
+        : (_type == TransactionType.expense
+              ? AppStrings.addExpense
+              : AppStrings.addIncome);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _groupId != null
-              ? 'Add Group Expense'
-              : _type == TransactionType.expense
-              ? 'Add Expense'
-              : 'Add Income',
-        ),
+        title: Text(title),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => context.pop(),
         ),
-        actions: [TextButton(onPressed: _save, child: const Text('Save'))],
+        actions: [
+          TextButton(
+            onPressed: _isEdit ? _update : _save,
+            child: Text(_isEdit ? AppStrings.update : AppStrings.save),
+          ),
+        ],
       ),
       body: Form(
         key: _formKey,
@@ -71,6 +116,8 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
             const SizedBox(height: AppSizes.md),
             _buildCategoryDropdown(categories),
             const SizedBox(height: AppSizes.md),
+            _buildPaymentMethodSelector(),
+            const SizedBox(height: AppSizes.md),
             _buildDescriptionField(),
             const SizedBox(height: AppSizes.md),
             _buildDateSelector(),
@@ -80,17 +127,138 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     );
   }
 
+  Widget _buildTransferDetailView(BuildContext context) {
+    final t = _existingTransaction!;
+    final currency = ref.watch(currencyProvider);
+    final isIncome = t.type == TransactionType.income;
+    final color = isIncome ? AppColors.income : AppColors.expense;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(AppStrings.transferDetails),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: AppStrings.delete,
+            onPressed: () => _showDeleteDialog(context, ref, t.id),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(AppSizes.lg),
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSizes.lg),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(AppSizes.borderRadiusLg),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  '${isIncome ? '+' : '-'}${formatCurrency(t.amount, currency)}',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: AppSizes.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSizes.sm,
+                    vertical: AppSizes.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(
+                      AppSizes.borderRadiusSm,
+                    ),
+                  ),
+                  child: Text(
+                    isIncome ? AppStrings.moneyReceived : AppStrings.moneySent,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSizes.lg),
+          _DetailRow(
+            icon: Icons.description_outlined,
+            label: AppStrings.description,
+            value: t.description ?? AppStrings.transfer,
+          ),
+          const Divider(height: AppSizes.lg),
+          _DetailRow(
+            icon: getPaymentMethodIcon(t.paymentMethod),
+            label: AppStrings.wallet,
+            value: getPaymentMethodLabel(t.paymentMethod),
+          ),
+          const Divider(height: AppSizes.lg),
+          _DetailRow(
+            icon: Icons.calendar_today_outlined,
+            label: AppStrings.date,
+            value: DateFormat('EEEE, MMMM d, y').format(t.date),
+          ),
+          const Divider(height: AppSizes.lg),
+          _DetailRow(
+            icon: Icons.swap_horiz,
+            label: AppStrings.type,
+            value: AppStrings.transfer,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context, WidgetRef ref, String id) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(AppStrings.deleteTransfer),
+        content: const Text(AppStrings.deleteTransferConfirm),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(AppStrings.cancel),
+          ),
+          TextButton(
+            onPressed: () async {
+              await ref
+                  .read(transactionsProvider.notifier)
+                  .removeTransaction(id);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              if (context.mounted) context.pop();
+            },
+            child: Text(
+              AppStrings.delete,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTypeSelector() {
     return SegmentedButton<TransactionType>(
       segments: const [
         ButtonSegment(
           value: TransactionType.expense,
-          label: Text('Expense'),
+          label: Text(AppStrings.expense),
           icon: Icon(Icons.arrow_upward),
         ),
         ButtonSegment(
           value: TransactionType.income,
-          label: Text('Income'),
+          label: Text(AppStrings.income),
           icon: Icon(Icons.arrow_downward),
         ),
       ],
@@ -113,7 +281,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
       ],
       decoration: InputDecoration(
-        labelText: 'Amount',
+        labelText: AppStrings.amount,
         prefixText: '${currency.symbol} ',
         suffixIcon: IconButton(
           icon: const Icon(Icons.calculate_outlined),
@@ -125,11 +293,11 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
       validator: (value) {
         if (value == null || value.isEmpty) {
-          return 'Please enter an amount';
+          return AppStrings.validationAmountRequired;
         }
         final amount = double.tryParse(value);
         if (amount == null || amount <= 0) {
-          return 'Please enter a valid amount';
+          return AppStrings.validationAmountInvalid;
         }
         return null;
       },
@@ -139,13 +307,19 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
   Widget _buildCategoryDropdown(List categories) {
     final filteredCategories = _type == TransactionType.income
         ? categories
-              .where((c) => c.name == 'Salary' || c.name == 'Other')
+              .where(
+                (c) => c.categoryType == 'income' || c.categoryType == 'both',
+              )
               .toList()
-        : categories.where((c) => c.name != 'Salary').toList();
+        : categories
+              .where(
+                (c) => c.categoryType == 'expense' || c.categoryType == 'both',
+              )
+              .toList();
 
     return DropdownButtonFormField<String>(
       initialValue: _selectedCategoryId,
-      decoration: const InputDecoration(labelText: 'Category'),
+      decoration: const InputDecoration(labelText: AppStrings.category),
       items: filteredCategories.map<DropdownMenuItem<String>>((category) {
         return DropdownMenuItem<String>(
           value: category.id,
@@ -155,13 +329,15 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: _parseColor(category.color).withValues(alpha: 0.2),
+                  color: parseCategoryColor(
+                    category.color,
+                  ).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Icon(
-                  _getIconData(category.icon),
+                  getCategoryIconData(category.icon),
                   size: 16,
-                  color: _parseColor(category.color),
+                  color: parseCategoryColor(category.color),
                 ),
               ),
               const SizedBox(width: AppSizes.sm),
@@ -177,7 +353,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       },
       validator: (value) {
         if (value == null) {
-          return 'Please select a category';
+          return AppStrings.validationCategoryRequired;
         }
         return null;
       },
@@ -188,10 +364,45 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     return TextFormField(
       controller: _descriptionController,
       decoration: const InputDecoration(
-        labelText: 'Description (optional)',
+        labelText: AppStrings.descriptionOptional,
         alignLabelWithHint: true,
       ),
       maxLines: 2,
+    );
+  }
+
+  Widget _buildPaymentMethodSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(AppStrings.paymentMethodLabel),
+        const SizedBox(height: AppSizes.xs),
+        SegmentedButton<PaymentMethod>(
+          segments: [
+            ButtonSegment(
+              value: PaymentMethod.cash,
+              label: Text(getPaymentMethodLabel(PaymentMethod.cash)),
+              icon: const Icon(Icons.payments_outlined, size: 18),
+            ),
+            ButtonSegment(
+              value: PaymentMethod.ewallet,
+              label: Text(getPaymentMethodLabel(PaymentMethod.ewallet)),
+              icon: const Icon(Icons.phone_android_outlined, size: 18),
+            ),
+            ButtonSegment(
+              value: PaymentMethod.bank,
+              label: Text(getPaymentMethodLabel(PaymentMethod.bank)),
+              icon: const Icon(Icons.account_balance_outlined, size: 18),
+            ),
+          ],
+          selected: {_paymentMethod},
+          onSelectionChanged: (methods) {
+            setState(() {
+              _paymentMethod = methods.first;
+            });
+          },
+        ),
+      ],
     );
   }
 
@@ -199,7 +410,7 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.calendar_today_outlined),
-      title: const Text('Date'),
+      title: const Text(AppStrings.date),
       subtitle: Text(DateFormat('EEEE, MMMM d, y').format(_selectedDate)),
       trailing: const Icon(Icons.chevron_right),
       onTap: _pickDate,
@@ -225,60 +436,115 @@ class _AddTransactionPageState extends ConsumerState<AddTransactionPage> {
       final amount = double.parse(_amountController.text);
 
       final currentUser = ref.read(currentUserProvider);
-      final userId = currentUser?.id ?? 'demo-user';
+      if (currentUser == null) return;
+      final userId = currentUser.id;
 
-      final success = await ref
+      await ref
           .read(transactionsProvider.notifier)
           .addTransaction(
             amount: amount,
             categoryId: _selectedCategoryId!,
             userId: userId,
-            groupId: _groupId,
             description: _descriptionController.text.isNotEmpty
                 ? _descriptionController.text
                 : null,
             date: _selectedDate,
             type: _type,
+            paymentMethod: _paymentMethod,
           );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              success
-                  ? (_type == TransactionType.expense
-                        ? 'Expense added successfully'
-                        : 'Income added successfully')
-                  : 'Saved offline — will sync when connected',
+              _type == TransactionType.expense
+                  ? AppStrings.expenseAdded
+                  : AppStrings.incomeAdded,
             ),
             behavior: SnackBarBehavior.floating,
           ),
         );
-        context.pop();
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/');
+        }
       }
     }
   }
 
-  Color _parseColor(String hexColor) {
-    try {
-      return Color(int.parse(hexColor.replaceFirst('#', '0xFF')));
-    } catch (_) {
-      return AppColors.primary;
+  Future<void> _update() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_existingTransaction == null) return;
+
+    final amount = double.parse(_amountController.text);
+    final updated = _existingTransaction!.copyWith(
+      amount: amount,
+      categoryId: _selectedCategoryId ?? _existingTransaction!.categoryId,
+      description: _descriptionController.text.isNotEmpty
+          ? _descriptionController.text
+          : null,
+      date: _selectedDate,
+      type: _type,
+      paymentMethod: _paymentMethod,
+    );
+
+    await ref.read(transactionsProvider.notifier).updateTransaction(updated);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(AppStrings.transactionUpdated),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      context.pop();
     }
   }
+}
 
-  IconData _getIconData(String iconName) {
-    return switch (iconName) {
-      'restaurant' => Icons.restaurant,
-      'directions_car' => Icons.directions_car,
-      'shopping_bag' => Icons.shopping_bag,
-      'movie' => Icons.movie,
-      'receipt' => Icons.receipt,
-      'local_hospital' => Icons.local_hospital,
-      'school' => Icons.school,
-      'home' => Icons.home,
-      'account_balance_wallet' => Icons.account_balance_wallet,
-      _ => Icons.more_horiz,
-    };
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: AppSizes.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: AppSizes.xxs),
+              Text(
+                value,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -1,77 +1,162 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/constants/constants.dart';
 import '../../../core/services/currency_service.dart';
-import '../../auth/data/auth_repository.dart';
+import '../../../core/services/local_cache_service.dart';
+import '../../../core/services/export_import_service.dart';
 
-class SettingsPage extends ConsumerWidget {
+class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends ConsumerState<SettingsPage> {
+  bool _isExporting = false;
+  bool _isImporting = false;
+
+  @override
+  Widget build(BuildContext context) {
     final currency = ref.watch(currencyProvider);
-    final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text(AppStrings.settings)),
       body: ListView(
         children: [
           ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              backgroundImage: user?.imageProvider,
-              child: user?.imageProvider == null
-                  ? Text(
-                      user?.name?.isNotEmpty ?? false
-                          ? user!.name![0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      ),
-                    )
-                  : null,
-            ),
-            title: Text(user?.name ?? 'Unknown User'),
-            subtitle: Text(user?.email ?? ''),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/settings/profile'),
-          ),
-          ListTile(
             leading: const Icon(Icons.attach_money),
-            title: const Text('Currency'),
+            title: const Text(AppStrings.currency),
             subtitle: Text('${currency.symbol} ${currency.code}'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showCurrencyPicker(context, ref, currency),
           ),
           ListTile(
             leading: const Icon(Icons.category_outlined),
-            title: const Text('Categories'),
+            title: const Text(AppStrings.categories),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
+            onTap: () => context.push('/settings/categories'),
           ),
           ListTile(
             leading: const Icon(Icons.brightness_6_outlined),
-            title: const Text('Theme'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {},
-          ),
-          ListTile(
-            leading: const Icon(Icons.star_outline),
-            title: const Text('Upgrade to Pro'),
+            title: const Text(AppStrings.theme),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {},
           ),
           const Divider(),
           ListTile(
+            leading: const Icon(Icons.upload_file_outlined),
+            title: const Text(AppStrings.export),
+            subtitle: const Text(AppStrings.exportDesc),
+            trailing: _isExporting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isExporting ? null : _exportData,
+          ),
+          ListTile(
+            leading: const Icon(Icons.download_outlined),
+            title: const Text(AppStrings.import),
+            subtitle: const Text(AppStrings.importDesc),
+            trailing: _isImporting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isImporting ? null : _importData,
+          ),
+          const Divider(),
+          ListTile(
             leading: const Icon(Icons.info_outline),
-            title: const Text('About'),
+            title: const Text(AppStrings.about),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {},
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _exportData() async {
+    setState(() => _isExporting = true);
+    try {
+      final cache = ref.read(localCacheServiceProvider);
+      final service = ExportImportService(cache);
+      final path = await service.exportData();
+
+      if (mounted) {
+        setState(() => _isExporting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              path != null
+                  ? AppStrings.exportSuccess
+                  : AppStrings.exportCancelled,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isExporting = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    }
+  }
+
+  Future<void> _importData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(AppStrings.import),
+        content: const Text(AppStrings.importConfirm),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text(AppStrings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isImporting = true);
+    try {
+      final cache = ref.read(localCacheServiceProvider);
+      final service = ExportImportService(cache);
+      final success = await service.importData();
+
+      if (mounted) {
+        setState(() => _isImporting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success ? AppStrings.importSuccess : AppStrings.importFailed,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isImporting = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+      }
+    }
   }
 
   void _showCurrencyPicker(
@@ -92,14 +177,13 @@ class SettingsPage extends ConsumerWidget {
             return Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSizes.md),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Select Currency',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w600),
+                        AppStrings.selectCurrency,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                       IconButton(
                         icon: const Icon(Icons.close),
@@ -120,13 +204,12 @@ class SettingsPage extends ConsumerWidget {
                       return ListTile(
                         leading: Text(
                           currency.symbol,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                         title: Text(currency.name),
                         subtitle: Text(currency.code),
                         trailing: isSelected
-                            ? const Icon(Icons.check, color: Colors.green)
+                            ? const Icon(Icons.check, color: AppColors.success)
                             : null,
                         onTap: () {
                           ref

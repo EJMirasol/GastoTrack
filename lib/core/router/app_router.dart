@@ -5,12 +5,13 @@ import 'package:go_router/go_router.dart';
 import '../../features/analytics/presentation/analytics_page.dart';
 import '../../features/auth/presentation/auth_page.dart';
 import '../../features/transactions/presentation/add_transaction_page.dart';
+import '../../features/transactions/presentation/categories_page.dart';
+import '../../features/transactions/presentation/category_form_page.dart';
 import '../../features/transactions/presentation/home_page.dart';
-import '../../features/groups/presentation/groups_page.dart';
-import '../../features/groups/presentation/group_detail_page.dart';
-import '../../features/settings/presentation/profile_page.dart';
 import '../../features/settings/presentation/settings_page.dart';
+import '../../features/wallets/presentation/wallets_page.dart';
 import '../../features/auth/data/auth_repository.dart';
+import '../../core/constants/constants.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final isAuthenticated = ref.watch(isAuthenticatedProvider);
@@ -18,20 +19,15 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
-      final isAuthRoute = state.matchedLocation == '/auth';
+      final isLanding = state.matchedLocation == '/welcome';
 
-      if (!isAuthenticated && !isAuthRoute) {
-        return '/auth';
-      }
-
-      if (isAuthenticated && isAuthRoute) {
-        return '/';
-      }
+      if (!isAuthenticated && !isLanding) return '/welcome';
+      if (isAuthenticated && isLanding) return '/';
 
       return null;
     },
     routes: [
-      GoRoute(path: '/auth', builder: (context, state) => const AuthPage()),
+      GoRoute(path: '/welcome', builder: (context, state) => const AuthPage()),
       ShellRoute(
         builder: (context, state, child) => ScaffoldWithNavBar(child: child),
         routes: [
@@ -41,8 +37,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: 'add',
+                builder: (context, state) => const AddTransactionPage(),
+              ),
+              GoRoute(
+                path: 'edit/:id',
                 builder: (context, state) => AddTransactionPage(
-                  groupId: state.uri.queryParameters['groupId'],
+                  transactionId: state.pathParameters['id'],
                 ),
               ),
             ],
@@ -52,23 +52,28 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AnalyticsPage(),
           ),
           GoRoute(
-            path: '/groups',
-            builder: (context, state) => const GroupsPage(),
-            routes: [
-              GoRoute(
-                path: ':id',
-                builder: (context, state) =>
-                    GroupDetailPage(groupId: state.pathParameters['id'] ?? ''),
-              ),
-            ],
+            path: '/wallets',
+            builder: (context, state) => const WalletsPage(),
           ),
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsPage(),
             routes: [
               GoRoute(
-                path: 'profile',
-                builder: (context, state) => const ProfilePage(),
+                path: 'categories',
+                builder: (context, state) => const CategoriesPage(),
+                routes: [
+                  GoRoute(
+                    path: 'add',
+                    builder: (context, state) => const CategoryFormPage(),
+                  ),
+                  GoRoute(
+                    path: 'edit/:id',
+                    builder: (context, state) => CategoryFormPage(
+                      categoryId: state.pathParameters['id'],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -94,22 +99,22 @@ class ScaffoldWithNavBar extends StatelessWidget {
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
-            label: 'Home',
+            label: AppStrings.home,
           ),
           NavigationDestination(
             icon: Icon(Icons.bar_chart_outlined),
             selectedIcon: Icon(Icons.bar_chart),
-            label: 'Analytics',
+            label: AppStrings.analytics,
           ),
           NavigationDestination(
-            icon: Icon(Icons.group_outlined),
-            selectedIcon: Icon(Icons.group),
-            label: 'Groups',
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet),
+            label: AppStrings.wallets,
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
+            label: AppStrings.settings,
           ),
         ],
       ),
@@ -120,7 +125,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
     final location = GoRouterState.of(context).uri.path;
     if (location == '/') return 0;
     if (location.startsWith('/analytics')) return 1;
-    if (location.startsWith('/groups')) return 2;
+    if (location.startsWith('/wallets')) return 2;
     if (location.startsWith('/settings')) return 3;
     return 0;
   }
@@ -134,7 +139,7 @@ class ScaffoldWithNavBar extends StatelessWidget {
         context.go('/analytics');
         break;
       case 2:
-        context.go('/groups');
+        context.go('/wallets');
         break;
       case 3:
         context.go('/settings');
